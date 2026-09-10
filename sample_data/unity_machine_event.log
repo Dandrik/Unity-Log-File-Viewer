@@ -1,0 +1,18 @@
+2026-09-10 09:14:02.100 [LinacState] INFO - System entering Treatment Preparation state.
+2026-09-10 09:14:05.340 [MRAcquisition] INFO - MRI sequence pre-scan calibration verified (Gradient shim OK, B0 field 1.5T nominal).
+2026-09-10 09:14:12.820 [MLCService] INFO - Initializing Agility 160-leaf MLC bank calibration. All 80 leaf pairs reporting nominal home position.
+2026-09-10 09:14:15.650 [MLCService] WARN - Leaf 24 optical encoder delta slightly elevated (+0.38 mm), compensating.
+2026-09-10 09:14:22.010 [RFSubsystem] INFO - Magnetron mod pulse width: 3.2 us, Frequency AFC locked at 2998.2 MHz.
+2026-09-10 09:14:30.500 [BeamControl] INFO - Radiation beam on: Target MU = 250.0, Dose Rate = 450 MU/min, Energy = 7 MV FFF.
+2026-09-10 09:14:48.210 [GantryDriver] WARN - Gantry angular velocity deviation detected: measured 5.8 deg/s vs expected 6.0 deg/s.
+2026-09-10 09:15:02.110 [MLCService] ERROR - Dynamic leaf tracking error exceeded threshold on Leaf 24 (1.42 mm).
+    Error Code: ERR_MLC_LEAF_LAG_0x0018
+    Details: Bank Y1 Leaf 24 motor current 1.8A, tracking lag at Control Point 142.
+    Stack Trace:
+        at Elekta.Unity.MLC.AgilityController.VerifyTolerance() in agility_ctrl.cs:line 312
+        at Elekta.Unity.Delivery.TrackAxes() in delivery_tracker.cs:line 89
+2026-09-10 09:15:04.890 [SafetyInterlock] WARN - MLC leaf position warning flag active; continuing delivery within secondary guard band.
+2026-09-10 09:15:20.150 [MRAcquisition] INFO - Cine MR frame rate: 8 fps, 2D sagittal plane tracking target centroid.
+2026-09-10 09:15:35.400 [BeamControl] INFO - Beam complete: 250.0 MU delivered in 64.9 seconds.
+2026-09-10 09:15:38.100 [LinacState] INFO - System returning to Ready state.
+
