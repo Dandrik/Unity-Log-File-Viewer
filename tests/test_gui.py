@@ -85,20 +85,20 @@ class TestGUI(unittest.TestCase):
         canvas = self.app.trf_view.mlc_canvas
         self.assertGreater(canvas.scale, 0.0)
 
-        # Hover test: near top of stack (Leaf 1) and near bottom of stack (Leaf 80)
+        # Hover test: near start of stack (Leaf 1) and near end of stack (Leaf 80)
         class MockMouseEvent:
             def __init__(self, x, y):
                 self.x = x
                 self.y = y
 
-        # Top of leaf stack
-        top_y = canvas.cy - (UNITY_STACK_LIMIT_MM * canvas.scale) + 2
-        canvas._on_mouse_hover(MockMouseEvent(canvas.cx, top_y))
+        # Default orientation is "Top" (horizontal leaf stack along X)
+        self.assertEqual(canvas.y2_orientation, "Top")
+        left_x = canvas.cx - (UNITY_STACK_LIMIT_MM * canvas.scale) + 2
+        canvas._on_mouse_hover(MockMouseEvent(left_x, canvas.cy))
         self.assertIn("Leaf 01", canvas.lbl_hover.cget("text"))
 
-        # Bottom of leaf stack
-        bot_y = canvas.cy + (UNITY_STACK_LIMIT_MM * canvas.scale) - 2
-        canvas._on_mouse_hover(MockMouseEvent(canvas.cx, bot_y))
+        right_x = canvas.cx + (UNITY_STACK_LIMIT_MM * canvas.scale) - 2
+        canvas._on_mouse_hover(MockMouseEvent(right_x, canvas.cy))
         self.assertIn("Leaf 80", canvas.lbl_hover.cget("text"))
 
     def test_y2_orientation_selection(self):
@@ -111,6 +111,27 @@ class TestGUI(unittest.TestCase):
             self.assertEqual(canvas.y2_orientation, ori)
             self.assertGreater(len(canvas.canvas.find_withtag("leaf")), 0)
             self.assertGreater(len(canvas.canvas.find_withtag("jaw")), 0)
+    def test_treatment_playback_datetime_display(self):
+        """Verifies treatment start, current control point, and treatment end timestamps."""
+        self.app.trf_view.load_sample_data()
+        canvas = self.app.trf_view.mlc_canvas
+
+        # Start date/time should be parsed from header (2026-09-10 10:15:32)
+        self.assertEqual(canvas.lbl_tx_start.cget("text"), "2026-09-10 10:15:32")
+
+        # Frame 0: Current CP should equal Start date/time
+        self.assertEqual(canvas.lbl_tx_cp.cget("text"), "2026-09-10 10:15:32")
+
+        # End date/time should reflect the full duration (23.96s -> 10:15:55)
+        self.assertEqual(canvas.lbl_tx_end.cget("text"), "2026-09-10 10:15:55")
+
+        # Seek to last frame: Current CP should update to match End date/time
+        canvas.seek_last()
+        self.assertEqual(canvas.lbl_tx_cp.cget("text"), canvas.lbl_tx_end.cget("text"))
+
+        # Seek to frame 0: Current CP should return to Start date/time
+        canvas.seek_first()
+        self.assertEqual(canvas.lbl_tx_cp.cget("text"), canvas.lbl_tx_start.cget("text"))
 
 
 if __name__ == "__main__":

@@ -3,6 +3,7 @@
 import tkinter as tk
 from tkinter import ttk
 from typing import Callable, Dict, List, Optional
+from datetime import datetime, timedelta
 from core.trf_analyzer import TRFAnalyzer
 from gui.styles import AppTheme
 
@@ -17,6 +18,20 @@ UNITY_TRAVEL_LIMIT_MM = UNITY_FIELD_TRAVEL_MM / 2.0  # +/- 110.0 mm active field
 UNITY_PARK_WALL_MM = 165.0     # Leaf carriage / retraction park wall boundary (+/- 165.0 mm)
 UNITY_STACK_LIMIT_MM = UNITY_FIELD_STACK_MM / 2.0    # +/- 287.0 mm leaf stack boundary from isocenter
 
+# BEV Scaled Fonts (1.5x larger for high visibility)
+FONT_BEV_HEADER_BOLD = ("Segoe UI", 14, "bold")
+FONT_BEV_HEADER = ("Segoe UI", 14)
+FONT_BEV_MONO = ("Consolas", 14)
+FONT_BEV_LABEL = ("Segoe UI", 12)
+FONT_BEV_LABEL_BOLD = ("Segoe UI", 12, "bold")
+FONT_BEV_CANVAS_LARGE = ("Segoe UI", 14, "bold")
+FONT_BEV_CANVAS_MEDIUM = ("Segoe UI", 12, "bold")
+FONT_BEV_CANVAS_SMALL = ("Segoe UI", 12)
+FONT_BEV_DT_LABEL = ("Segoe UI", 11)
+FONT_BEV_DT_LABEL_BOLD = ("Segoe UI", 11, "bold")
+FONT_BEV_DT_VAL = ("Consolas", 11)
+FONT_BEV_DT_VAL_BOLD = ("Consolas", 11, "bold")
+
 
 class MLCCanvas(ttk.Frame):
     """Visualizes Agility MLC 80 leaf pairs, jaws, aperture, and errors in real-time."""
@@ -30,6 +45,9 @@ class MLCCanvas(ttk.Frame):
         self.is_playing = False
         self.play_speed = 1.0  # multiplier
         self._anim_job: Optional[str] = None
+        self.start_datetime: Optional[datetime] = None
+        self.current_datetime: Optional[datetime] = None
+        self.end_datetime: Optional[datetime] = None
 
         # Display parameters (mm to pixels)
         self.canvas_width = 540
@@ -37,7 +55,7 @@ class MLCCanvas(ttk.Frame):
         self.scale = 1.0
         self.cx = self.canvas_width / 2.0
         self.cy = self.canvas_height / 2.0
-        self.y2_orientation = "Right"  # "Right", "Left", "Top", or "Bottom"
+        self.y2_orientation = "Top"  # "Top", "Bottom", "Right", or "Left"
         self._update_scale()
 
         self._build_ui()
@@ -46,45 +64,59 @@ class MLCCanvas(ttk.Frame):
         """Calculates isotropic scaling factor to fit 57.4 cm x 22.0 cm field (plus leaf park margins)."""
         w = max(50, self.canvas_width)
         h = max(50, self.canvas_height)
-        self.cx = w / 2.0
-        self.cy = h / 2.0
 
         if self.y2_orientation in ("Right", "Left"):
             # Leaf travel is horizontal (~360 mm span), leaf stack is vertical (~614 mm span)
-            span_x = (UNITY_PARK_WALL_MM * 2.0) + 30.0
-            span_y = UNITY_FIELD_STACK_MM + 40.0
+            span_x = (UNITY_PARK_WALL_MM * 2.0) + 40.0
+            span_y = UNITY_FIELD_STACK_MM + 55.0
         else:
             # Leaf stack is horizontal (~614 mm span), leaf travel is vertical (~360 mm span)
-            span_x = UNITY_FIELD_STACK_MM + 40.0
-            span_y = (UNITY_PARK_WALL_MM * 2.0) + 30.0
+            span_x = UNITY_FIELD_STACK_MM + 55.0
+            span_y = (UNITY_PARK_WALL_MM * 2.0) + 40.0
 
-        scale_x = max(10.0, w - 30.0) / span_x
+        if w >= 800:
+            # Reserve space on the right for treatment timestamps block on the blue background
+            right_panel_px = 280.0
+            w_avail = w - right_panel_px
+            self.cx = max(100.0, (w_avail / 2.0) + 15.0)
+            self.cy = h / 2.0
+            scale_x = max(10.0, w_avail - 30.0) / span_x
+        else:
+            self.cx = w / 2.0
+            self.cy = h / 2.0
+            scale_x = max(10.0, w - 30.0) / span_x
+
         scale_y = max(10.0, h - 30.0) / span_y
         self.scale = max(0.1, min(scale_x, scale_y))
 
     def _build_ui(self) -> None:
         """Constructs canvas and animation controls."""
-        # Top info header
+        # Top info header (1.5x larger text)
         self.info_frame = ttk.Frame(self)
-        self.info_frame.pack(fill="x", padx=4, pady=(0, 4))
+        self.info_frame.pack(fill="x", padx=6, pady=(2, 6))
 
-        self.lbl_time = ttk.Label(self.info_frame, text="Time: 0.00 s", font=AppTheme.FONT_BODY_BOLD)
-        self.lbl_time.pack(side="left", padx=6)
+        self.lbl_time = ttk.Label(self.info_frame, text="Time: 0.00 s", font=FONT_BEV_HEADER_BOLD)
+        self.lbl_time.pack(side="left", padx=8)
 
-        self.lbl_gantry = ttk.Label(self.info_frame, text="Gantry: --°", font=AppTheme.FONT_BODY_BOLD)
-        self.lbl_gantry.pack(side="left", padx=12)
+        self.lbl_gantry = ttk.Label(self.info_frame, text="Gantry: --°", font=FONT_BEV_HEADER_BOLD)
+        self.lbl_gantry.pack(side="left", padx=14)
 
-        self.lbl_mu = ttk.Label(self.info_frame, text="MU: 0.0", font=AppTheme.FONT_BODY)
-        self.lbl_mu.pack(side="left", padx=6)
+        self.lbl_mu = ttk.Label(self.info_frame, text="MU: 0.0", font=FONT_BEV_HEADER)
+        self.lbl_mu.pack(side="left", padx=8)
 
-        self.lbl_x1 = ttk.Label(self.info_frame, text="X1: -- mm", font=AppTheme.FONT_BODY_BOLD, foreground="#ef4444")
-        self.lbl_x1.pack(side="left", padx=8)
+        self.lbl_x1 = ttk.Label(self.info_frame, text="X1: -- mm", font=FONT_BEV_HEADER_BOLD, foreground="#ef4444")
+        self.lbl_x1.pack(side="left", padx=10)
 
-        self.lbl_x2 = ttk.Label(self.info_frame, text="X2: -- mm", font=AppTheme.FONT_BODY_BOLD, foreground="#22c55e")
-        self.lbl_x2.pack(side="left", padx=8)
+        self.lbl_x2 = ttk.Label(self.info_frame, text="X2: -- mm", font=FONT_BEV_HEADER_BOLD, foreground="#22c55e")
+        self.lbl_x2.pack(side="left", padx=10)
 
-        self.lbl_hover = ttk.Label(self.info_frame, text="", font=AppTheme.FONT_MONO, foreground=AppTheme.TEXT_SECONDARY)
-        self.lbl_hover.pack(side="right", padx=6)
+        self.lbl_hover = ttk.Label(self.info_frame, text="", font=FONT_BEV_MONO, foreground=AppTheme.TEXT_SECONDARY)
+        self.lbl_hover.pack(side="right", padx=12)
+
+        # Compatibility labels for unit tests & headless inspectors
+        self.lbl_tx_start = ttk.Label(self, text="--")
+        self.lbl_tx_cp = ttk.Label(self, text="--")
+        self.lbl_tx_end = ttk.Label(self, text="--")
 
         # Scrubber bar pinned to the bottom (always visible)
         self.ctrl_frame = ttk.Frame(self, style="Card.TFrame", padding=(8, 6))
@@ -119,20 +151,20 @@ class MLCCanvas(ttk.Frame):
         self.slider.pack(side="left", fill="x", expand=True, padx=8)
 
         # Step / Frame Counter
-        self.lbl_step_counter = ttk.Label(self.ctrl_frame, text="Step: 0 / 0", font=AppTheme.FONT_MONO, width=18)
-        self.lbl_step_counter.pack(side="left", padx=4)
+        self.lbl_step_counter = ttk.Label(self.ctrl_frame, text="Step: 0 / 0", font=FONT_BEV_MONO, width=22)
+        self.lbl_step_counter.pack(side="left", padx=6)
 
         # Speed Dropdown
-        ttk.Label(self.ctrl_frame, text="Speed:", font=AppTheme.FONT_SMALL).pack(side="left", padx=(6, 2))
-        self.speed_combo = ttk.Combobox(self.ctrl_frame, values=["1x", "2x", "5x", "10x"], width=5, state="readonly")
+        ttk.Label(self.ctrl_frame, text="Speed:", font=FONT_BEV_LABEL_BOLD).pack(side="left", padx=(8, 3))
+        self.speed_combo = ttk.Combobox(self.ctrl_frame, values=["1x", "2x", "5x", "10x"], width=5, state="readonly", font=FONT_BEV_LABEL)
         self.speed_combo.set("1x")
         self.speed_combo.bind("<<ComboboxSelected>>", self._on_speed_changed)
         self.speed_combo.pack(side="left", padx=2)
 
         # Y2 Bank Position Dropdown
-        ttk.Label(self.ctrl_frame, text="Y2 Bank:", font=AppTheme.FONT_SMALL).pack(side="left", padx=(8, 2))
-        self.y2_combo = ttk.Combobox(self.ctrl_frame, values=["Right", "Left", "Top", "Bottom"], width=7, state="readonly")
-        self.y2_combo.set("Right")
+        ttk.Label(self.ctrl_frame, text="Y2 Bank:", font=FONT_BEV_LABEL_BOLD).pack(side="left", padx=(10, 3))
+        self.y2_combo = ttk.Combobox(self.ctrl_frame, values=["Top", "Bottom", "Right", "Left"], width=7, state="readonly", font=FONT_BEV_LABEL)
+        self.y2_combo.set("Top")
         self.y2_combo.bind("<<ComboboxSelected>>", self._on_y2_orientation_changed)
         self.y2_combo.pack(side="left", padx=2)
 
@@ -158,6 +190,25 @@ class MLCCanvas(ttk.Frame):
         # Initial background draw
         self._draw_axes()
 
+    @staticmethod
+    def _parse_datetime(date_str: str) -> Optional[datetime]:
+        """Parses a TRF date string into a datetime object."""
+        if not date_str or not date_str.strip():
+            return None
+        s = date_str.strip()
+        try:
+            from dateutil import parser
+            return parser.parse(s, yearfirst=True)
+        except Exception:
+            pass
+        for fmt in ("%y/%m/%d %H:%M:%S", "%Y-%m-%d %H:%M:%S", "%Y/%m/%d %H:%M:%S", "%d/%m/%Y %H:%M:%S"):
+            try:
+                clean = s.rstrip(" Z").strip()
+                return datetime.strptime(clean, fmt)
+            except Exception:
+                continue
+        return None
+
     def set_analyzer(self, analyzer: TRFAnalyzer) -> None:
         """Loads dataset and initializes timeline."""
         self.analyzer = analyzer
@@ -166,6 +217,24 @@ class MLCCanvas(ttk.Frame):
         self.slider.config(to=max(0, self.total_frames - 1))
         self.slider_var.set(0)
         self.lbl_step_counter.config(text=f"Step: 1 / {self.total_frames}")
+
+        # Compute Start and End datetimes
+        header_date = getattr(analyzer.dataset.header, "date", "") if analyzer.dataset else ""
+        self.start_datetime = self._parse_datetime(header_date)
+        if self.start_datetime and len(analyzer.df) > 0:
+            t0 = float(analyzer.df.index[0])
+            t_end = float(analyzer.df.index[-1])
+            duration_s = max(0.0, t_end - t0)
+            self.end_datetime = self.start_datetime + timedelta(seconds=duration_s)
+            self.current_datetime = self.start_datetime
+            self.lbl_tx_start.config(text=self.start_datetime.strftime("%Y-%m-%d %H:%M:%S"))
+            self.lbl_tx_end.config(text=self.end_datetime.strftime("%Y-%m-%d %H:%M:%S"))
+        else:
+            self.end_datetime = None
+            self.current_datetime = None
+            self.lbl_tx_start.config(text="--")
+            self.lbl_tx_end.config(text="--")
+
         self.render_current_frame()
 
     def render_current_frame(self) -> None:
@@ -190,6 +259,16 @@ class MLCCanvas(ttk.Frame):
         raw_x2 = data.get("x2_jaw", UNITY_STACK_LIMIT_MM)
         self.lbl_x1.config(text=f"X1: {raw_x1:.1f} mm")
         self.lbl_x2.config(text=f"X2: {raw_x2:.1f} mm")
+
+        # Update Current Control Point Date & Time
+        if self.start_datetime and self.analyzer and len(self.analyzer.df) > 0:
+            t0 = float(self.analyzer.df.index[0])
+            t_curr = max(0.0, data["time_s"] - t0)
+            self.current_datetime = self.start_datetime + timedelta(seconds=t_curr)
+            self.lbl_tx_cp.config(text=self.current_datetime.strftime("%Y-%m-%d %H:%M:%S"))
+        else:
+            self.current_datetime = None
+            self.lbl_tx_cp.config(text="--")
 
     def _draw_axes(self) -> None:
         """Draws isocenter crosshairs, 50mm grid ticks, and the 57.4 x 22.0 cm field frame."""
@@ -233,7 +312,7 @@ class MLCCanvas(ttk.Frame):
             self.canvas.create_line(px2, fy1 - 6, px2, fy2 + 6, fill="#334155", width=1, dash=(2, 3), tags="grid")
 
             # Field dimension label
-            self.canvas.create_text(self.cx, fy1 - 10, text="Max Field: 22.0 × 57.4 cm (Elekta Unity)", fill="#64748b", font=("Segoe UI", 8), anchor="s", tags="grid")
+            self.canvas.create_text(self.cx, fy1 - 12, text="Max Field: 22.0 × 57.4 cm (Elekta Unity)", fill="#64748b", font=FONT_BEV_CANVAS_SMALL, anchor="s", tags="grid")
         else:
             fx1 = self.cx - (UNITY_STACK_LIMIT_MM * self.scale)
             fx2 = self.cx + (UNITY_STACK_LIMIT_MM * self.scale)
@@ -250,7 +329,10 @@ class MLCCanvas(ttk.Frame):
             self.canvas.create_line(fx1 - 6, py2, fx2 + 6, py2, fill="#334155", width=1, dash=(2, 3), tags="grid")
 
             # Field dimension label
-            self.canvas.create_text(self.cx, fy1 - 10, text="Max Field: 57.4 × 22.0 cm (Elekta Unity)", fill="#64748b", font=("Segoe UI", 8), anchor="s", tags="grid")
+            self.canvas.create_text(self.cx, fy1 - 12, text="Max Field: 57.4 × 22.0 cm (Elekta Unity)", fill="#64748b", font=FONT_BEV_CANVAS_SMALL, anchor="s", tags="grid")
+
+        # Always draw treatment timestamps on the blue background to the right of the MLC display
+        self._draw_datetimes()
 
     def _on_y2_orientation_changed(self, event=None) -> None:
         """Handles change in Y2 bank orientation (Right, Left, Top, Bottom)."""
@@ -340,17 +422,17 @@ class MLCCanvas(ttk.Frame):
             if top_limit_px <= y2_px <= bot_limit_px:
                 self.canvas.create_line(left_wall_px - 8, y2_px, right_wall_px + 8, y2_px, fill="#22c55e", width=2, tags="jaw")
 
-            x1_label_y = y1_px - 8 if (y1_px - 8) > (top_limit_px + 6) else y1_px + 12
-            self.canvas.create_text(self.cx, x1_label_y, text=f"▲ X1 Diaphragm ({raw_x1:.1f} mm)", fill="#f87171", font=("Segoe UI", 9, "bold"), anchor="center", tags="jaw")
-            x2_label_y = y2_px + 8 if (y2_px + 8) < (bot_limit_px - 6) else y2_px - 12
-            self.canvas.create_text(self.cx, x2_label_y, text=f"▼ X2 Diaphragm ({raw_x2:.1f} mm)", fill="#4ade80", font=("Segoe UI", 9, "bold"), anchor="center", tags="jaw")
+            x1_label_y = y1_px - 14 if (y1_px - 14) > (top_limit_px + 8) else y1_px + 16
+            self.canvas.create_text(self.cx, x1_label_y, text=f"▲ X1 Diaphragm ({raw_x1:.1f} mm)", fill="#f87171", font=FONT_BEV_CANVAS_LARGE, anchor="center", tags="jaw")
+            x2_label_y = y2_px + 14 if (y2_px + 14) < (bot_limit_px - 8) else y2_px - 16
+            self.canvas.create_text(self.cx, x2_label_y, text=f"▼ X2 Diaphragm ({raw_x2:.1f} mm)", fill="#4ade80", font=FONT_BEV_CANVAS_LARGE, anchor="center", tags="jaw")
 
             if ori == "Right":
-                self.canvas.create_text(left_wall_px + 35, top_limit_px - 8, text="◀ Bank Y1", fill="#60a5fa", font=("Segoe UI", 9, "bold"), anchor="s", tags="jaw")
-                self.canvas.create_text(right_wall_px - 35, top_limit_px - 8, text="Bank Y2 ▶", fill="#22d3ee", font=("Segoe UI", 9, "bold"), anchor="s", tags="jaw")
+                self.canvas.create_text(left_wall_px + 50, top_limit_px - 12, text="◀ Bank Y1", fill="#60a5fa", font=FONT_BEV_CANVAS_LARGE, anchor="s", tags="jaw")
+                self.canvas.create_text(right_wall_px - 50, top_limit_px - 12, text="Bank Y2 ▶", fill="#22d3ee", font=FONT_BEV_CANVAS_LARGE, anchor="s", tags="jaw")
             else:
-                self.canvas.create_text(left_wall_px + 35, top_limit_px - 8, text="◀ Bank Y2", fill="#22d3ee", font=("Segoe UI", 9, "bold"), anchor="s", tags="jaw")
-                self.canvas.create_text(right_wall_px - 35, top_limit_px - 8, text="Bank Y1 ▶", fill="#60a5fa", font=("Segoe UI", 9, "bold"), anchor="s", tags="jaw")
+                self.canvas.create_text(left_wall_px + 50, top_limit_px - 12, text="◀ Bank Y2", fill="#22d3ee", font=FONT_BEV_CANVAS_LARGE, anchor="s", tags="jaw")
+                self.canvas.create_text(right_wall_px - 50, top_limit_px - 12, text="Bank Y1 ▶", fill="#60a5fa", font=FONT_BEV_CANVAS_LARGE, anchor="s", tags="jaw")
 
         else:
             # Vertical leaf travel (along Y axis) - Top or Bottom
@@ -408,11 +490,11 @@ class MLCCanvas(ttk.Frame):
                 if left_limit_px <= x2_px <= right_limit_px:
                     self.canvas.create_line(x2_px, top_wall_px - 8, x2_px, bot_wall_px + 8, fill="#22c55e", width=2, tags="jaw")
 
-                self.canvas.create_text(x1_px, top_wall_px - 8, text=f"◀ X1 ({raw_x1:.1f} mm)", fill="#f87171", font=("Segoe UI", 8, "bold"), anchor="s", tags="jaw")
-                self.canvas.create_text(x2_px, top_wall_px - 8, text=f"X2 ({raw_x2:.1f} mm) ▶", fill="#4ade80", font=("Segoe UI", 8, "bold"), anchor="s", tags="jaw")
+                self.canvas.create_text(x1_px, top_wall_px - 12, text=f"◀ X1 ({raw_x1:.1f} mm)", fill="#f87171", font=FONT_BEV_CANVAS_MEDIUM, anchor="s", tags="jaw")
+                self.canvas.create_text(x2_px, top_wall_px - 12, text=f"X2 ({raw_x2:.1f} mm) ▶", fill="#4ade80", font=FONT_BEV_CANVAS_MEDIUM, anchor="s", tags="jaw")
 
-                self.canvas.create_text(self.cx, top_wall_px + 14, text="▲ Bank Y2", fill="#22d3ee", font=("Segoe UI", 9, "bold"), anchor="center", tags="jaw")
-                self.canvas.create_text(self.cx, bot_wall_px - 14, text="Bank Y1 ▼", fill="#60a5fa", font=("Segoe UI", 9, "bold"), anchor="center", tags="jaw")
+                self.canvas.create_text(self.cx, top_wall_px + 20, text="▲ Bank Y2", fill="#22d3ee", font=FONT_BEV_CANVAS_LARGE, anchor="center", tags="jaw")
+                self.canvas.create_text(self.cx, bot_wall_px - 20, text="Bank Y1 ▼", fill="#60a5fa", font=FONT_BEV_CANVAS_LARGE, anchor="center", tags="jaw")
             else:
                 x1_px = self.cx + (raw_x1 * self.scale)
                 x2_px = self.cx - (raw_x2 * self.scale)
@@ -429,11 +511,111 @@ class MLCCanvas(ttk.Frame):
                 if left_limit_px <= x1_px <= right_limit_px:
                     self.canvas.create_line(x1_px, top_wall_px - 8, x1_px, bot_wall_px + 8, fill="#ef4444", width=2, tags="jaw")
 
-                self.canvas.create_text(x2_px, top_wall_px - 8, text=f"◀ X2 ({raw_x2:.1f} mm)", fill="#4ade80", font=("Segoe UI", 8, "bold"), anchor="s", tags="jaw")
-                self.canvas.create_text(x1_px, top_wall_px - 8, text=f"X1 ({raw_x1:.1f} mm) ▶", fill="#f87171", font=("Segoe UI", 8, "bold"), anchor="s", tags="jaw")
+                self.canvas.create_text(x2_px, top_wall_px - 12, text=f"◀ X2 ({raw_x2:.1f} mm)", fill="#4ade80", font=FONT_BEV_CANVAS_MEDIUM, anchor="s", tags="jaw")
+                self.canvas.create_text(x1_px, top_wall_px - 12, text=f"X1 ({raw_x1:.1f} mm) ▶", fill="#f87171", font=FONT_BEV_CANVAS_MEDIUM, anchor="s", tags="jaw")
 
-                self.canvas.create_text(self.cx, top_wall_px + 14, text="▲ Bank Y1", fill="#60a5fa", font=("Segoe UI", 9, "bold"), anchor="center", tags="jaw")
-                self.canvas.create_text(self.cx, bot_wall_px - 14, text="Bank Y2 ▼", fill="#22d3ee", font=("Segoe UI", 9, "bold"), anchor="center", tags="jaw")
+                self.canvas.create_text(self.cx, top_wall_px + 20, text="▲ Bank Y1", fill="#60a5fa", font=FONT_BEV_CANVAS_LARGE, anchor="center", tags="jaw")
+                self.canvas.create_text(self.cx, bot_wall_px - 20, text="Bank Y2 ▼", fill="#22d3ee", font=FONT_BEV_CANVAS_LARGE, anchor="center", tags="jaw")
+
+        # Always draw treatment timestamps on the blue background to the right of the MLC display
+        self._draw_datetimes()
+
+    def _draw_datetimes(self) -> None:
+        """Draws treatment timestamps to the right of the MLC display on top of the blue canvas background."""
+        self.canvas.delete("datetime")
+
+        w = self.canvas_width
+        if self.y2_orientation in ("Right", "Left"):
+            mlc_right_px = self.cx + (UNITY_PARK_WALL_MM * self.scale)
+        else:
+            mlc_right_px = self.cx + (UNITY_STACK_LIMIT_MM * self.scale)
+
+        # Position to the right of the MLC display on top of the blue background
+        if w >= 800:
+            x_label = max(mlc_right_px + 28.0, w - 275.0)
+        else:
+            x_label = max(10.0, w - 270.0)
+
+        x_val = x_label + 95.0
+        y_base = 25.0
+
+        # Subtle translucent / dark navy card on the blue background
+        box_pad = 12.0
+        box_w = 262.0
+        box_h = 90.0
+        self.canvas.create_rectangle(
+            x_label - box_pad,
+            y_base - 8.0,
+            x_label - box_pad + box_w,
+            y_base - 8.0 + box_h,
+            fill="#131d35",
+            outline="#334155",
+            width=1,
+            tags="datetime"
+        )
+
+        start_str = self.start_datetime.strftime("%Y-%m-%d %H:%M:%S") if self.start_datetime else "--"
+        current_str = self.current_datetime.strftime("%Y-%m-%d %H:%M:%S") if self.current_datetime else "--"
+        end_str = self.end_datetime.strftime("%Y-%m-%d %H:%M:%S") if self.end_datetime else "--"
+
+        # Update compatibility labels
+        self.lbl_tx_start.config(text=start_str)
+        self.lbl_tx_cp.config(text=current_str)
+        self.lbl_tx_end.config(text=end_str)
+
+        # Row 1: Treatment Start Date & Time
+        self.canvas.create_text(
+            x_label, y_base + 8.0,
+            text="Tx Start:",
+            fill="#94a3b8",
+            font=FONT_BEV_DT_LABEL_BOLD,
+            anchor="w",
+            tags="datetime"
+        )
+        self.canvas.create_text(
+            x_val, y_base + 8.0,
+            text=start_str,
+            fill="#f8fafc",
+            font=FONT_BEV_DT_VAL,
+            anchor="w",
+            tags="datetime"
+        )
+
+        # Row 2: Current Control Point Date & Time (Highlighted in cyan/sky blue)
+        self.canvas.create_text(
+            x_label, y_base + 36.0,
+            text="Current CP:",
+            fill="#38bdf8",
+            font=FONT_BEV_DT_LABEL_BOLD,
+            anchor="w",
+            tags="datetime"
+        )
+        self.canvas.create_text(
+            x_val, y_base + 36.0,
+            text=current_str,
+            fill="#38bdf8",
+            font=FONT_BEV_DT_VAL_BOLD,
+            anchor="w",
+            tags="datetime"
+        )
+
+        # Row 3: Treatment End Date & Time
+        self.canvas.create_text(
+            x_label, y_base + 64.0,
+            text="Tx End:",
+            fill="#94a3b8",
+            font=FONT_BEV_DT_LABEL_BOLD,
+            anchor="w",
+            tags="datetime"
+        )
+        self.canvas.create_text(
+            x_val, y_base + 64.0,
+            text=end_str,
+            fill="#f8fafc",
+            font=FONT_BEV_DT_VAL,
+            anchor="w",
+            tags="datetime"
+        )
 
     def _on_mouse_hover(self, event: tk.Event) -> None:
         """Shows leaf details on hover."""

@@ -90,9 +90,9 @@ class TRFView(ttk.Frame):
         self.sub_notebook = ttk.Notebook(self)
         self.sub_notebook.pack(fill="both", expand=True, padx=10, pady=(4, 8))
 
-        # Tab 1: MLC Leaf Shapes
+        # Tab 1: Treatment Playback
         self.tab_mlc = ttk.Frame(self.sub_notebook)
-        self.sub_notebook.add(self.tab_mlc, text="🎯 MLC Leaf Shapes (BEV)")
+        self.sub_notebook.add(self.tab_mlc, text="🎯 Treatment Playback")
         self.mlc_canvas = MLCCanvas(self.tab_mlc, on_frame_changed=self._on_mlc_frame_changed)
         self.mlc_canvas.pack(fill="both", expand=True)
 
