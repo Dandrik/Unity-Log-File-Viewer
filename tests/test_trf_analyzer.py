@@ -36,6 +36,11 @@ class TestTRFAnalyzer(unittest.TestCase):
         self.assertGreater(snap["x1_jaw"], 0)
         self.assertGreater(snap["x2_jaw"], 0)
         self.assertGreater(snap["time_s"], 0)
+        self.assertIn("dose_rate", snap)
+        self.assertIsInstance(snap["dose_rate"], float)
+        self.assertGreater(snap["dose_rate"], 400.0)
+        self.assertIn("gating", snap)
+        self.assertIsInstance(snap["gating"], bool)
 
 
 if __name__ == "__main__":

@@ -95,6 +95,7 @@ class TRFReader:
         # Dose
         dose_mu = next((c for c in columns if "Step Dose" in c and "Actual" in c), None)
         dose_rate = next((c for c in columns if "Dose Rate" in c and "Actual" in c), None)
+        gating = next((c for c in columns if any(k in c.lower() for k in ["gating", "gate", "beam hold", "beam_hold", "2546"])), None)
 
         return TRFDataset(
             header=header,
@@ -112,6 +113,7 @@ class TRFReader:
             jaw_x2_err_col=jaw_x2_err,
             dose_mu_col=dose_mu,
             dose_rate_col=dose_rate,
+            gating_col=gating,
         )
 
     @staticmethod
@@ -146,6 +148,16 @@ class TRFReader:
         total_mu = 250.0
         data["Step Dose/Actual Value (Mu)"] = np.linspace(0, total_mu, num_points)
         data["Actual Dose Rate/Actual Value (Mu/min)"] = np.full(num_points, 450.0) + np.random.normal(0, 5.0, num_points)
+        dose_rates = np.full(num_points, 450.0) + np.random.normal(0, 5.0, num_points)
+
+        # Gating (motion tracking beam hold): active during samples 180-220 and 340-370
+        gating_arr = np.zeros(num_points, dtype=int)
+        gating_arr[180:220] = 1
+        gating_arr[340:370] = 1
+        dose_rates[180:220] = 0.0
+        dose_rates[340:370] = 0.0
+        data["Actual Dose Rate/Actual Value (Mu/min)"] = dose_rates
+        data["Gating/Actual Value (None)"] = gating_arr
 
         # 80 Leaf Pairs (Agility MLC)
         # Generate an aperture (e.g. shaped like a target tumor volume that shifts)

@@ -133,6 +133,63 @@ class TestGUI(unittest.TestCase):
         canvas.seek_first()
         self.assertEqual(canvas.lbl_tx_cp.cget("text"), canvas.lbl_tx_start.cget("text"))
 
+    def test_treatment_playback_doserate_display(self):
+        """Verifies dose rate readout and vertical bar graph on the Treatment Playback canvas."""
+        self.app.trf_view.load_sample_data()
+        canvas = self.app.trf_view.mlc_canvas
+
+        # Initial dose rate from synthetic data should be ~450 MU/min
+        self.assertGreater(canvas.current_dose_rate, 400.0)
+        self.assertTrue(canvas.lbl_dose_rate.cget("text").endswith("MU/min"))
+
+        # Canvas items tagged with 'doserate' must be drawn
+        doserate_items = canvas.canvas.find_withtag("doserate")
+        self.assertGreater(len(doserate_items), 5)
+
+        # Explicitly verify 0.0 MU/min render (bar empty, label 0.0 MU/min)
+        canvas._draw_doserate(0.0)
+        self.assertEqual(canvas.lbl_dose_rate.cget("text"), "0.0 MU/min")
+        zero_items = canvas.canvas.find_withtag("doserate")
+        self.assertGreater(len(zero_items), 5)
+
+        # Explicitly verify 500.0 MU/min render
+        canvas._draw_doserate(500.0)
+        self.assertEqual(canvas.lbl_dose_rate.cget("text"), "500.0 MU/min")
+        full_items = canvas.canvas.find_withtag("doserate")
+        self.assertGreater(len(full_items), 5)
+
+    def test_treatment_playback_gating_box(self):
+        """Verifies Gating box inside doserate subwindow turning red when enabled."""
+        self.app.trf_view.load_sample_data()
+        canvas = self.app.trf_view.mlc_canvas
+
+        # Normal/disabled state
+        canvas._draw_doserate(450.0, is_gating=False)
+        self.assertEqual(canvas.lbl_gating.cget("text"), "DISABLED")
+        disabled_rects = [
+            i for i in canvas.canvas.find_withtag("doserate")
+            if canvas.canvas.type(i) == "rectangle" and canvas.canvas.itemcget(i, "fill") == "#0b1120"
+        ]
+        # Should have meter trough and gating box in #0b1120
+        self.assertGreaterEqual(len(disabled_rects), 2)
+
+        # Gated/enabled state (red box #dc2626, label ENABLED)
+        canvas._draw_doserate(0.0, is_gating=True)
+        self.assertEqual(canvas.lbl_gating.cget("text"), "ENABLED")
+        red_rects = [
+            i for i in canvas.canvas.find_withtag("doserate")
+            if canvas.canvas.type(i) == "rectangle" and canvas.canvas.itemcget(i, "fill") == "#dc2626"
+        ]
+        self.assertEqual(len(red_rects), 1)
+
+        # Check "Gating" text item
+        gating_texts = [
+            i for i in canvas.canvas.find_withtag("doserate")
+            if canvas.canvas.type(i) == "text" and canvas.canvas.itemcget(i, "text") == "Gating"
+        ]
+        self.assertEqual(len(gating_texts), 1)
+        self.assertEqual(canvas.canvas.itemcget(gating_texts[0], "fill"), "#ffffff")
+
 
 if __name__ == "__main__":
     unittest.main()

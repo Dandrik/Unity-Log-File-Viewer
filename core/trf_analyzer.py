@@ -233,6 +233,23 @@ class TRFAnalyzer:
         # MU
         mu = float(row[self.dataset.dose_mu_col]) if self.dataset.dose_mu_col in row else 0.0
 
+        # Dose Rate (MU/min)
+        dose_rate = 0.0
+        if self.dataset.dose_rate_col and self.dataset.dose_rate_col in row:
+            try:
+                dose_rate = float(row[self.dataset.dose_rate_col])
+            except (ValueError, TypeError):
+                dose_rate = 0.0
+
+        # Gating State (motion monitoring / beam hold)
+        gating_enabled = False
+        if self.dataset.gating_col and self.dataset.gating_col in row:
+            raw_gate = row[self.dataset.gating_col]
+            try:
+                gating_enabled = bool(float(raw_gate) > 0.5)
+            except (ValueError, TypeError):
+                gating_enabled = str(raw_gate).strip().lower() in ("1", "true", "enabled", "on", "active", "gate", "gating")
+
         return {
             "index": index,
             "time_s": time_s,
@@ -245,5 +262,7 @@ class TRFAnalyzer:
             "gantry_angle": g_angle,
             "gantry_error": g_err,
             "mu": mu,
+            "dose_rate": dose_rate,
+            "gating": gating_enabled,
         }
 

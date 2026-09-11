@@ -31,6 +31,8 @@ FONT_BEV_DT_LABEL = ("Segoe UI", 11)
 FONT_BEV_DT_LABEL_BOLD = ("Segoe UI", 11, "bold")
 FONT_BEV_DT_VAL = ("Consolas", 11)
 FONT_BEV_DT_VAL_BOLD = ("Consolas", 11, "bold")
+FONT_BEV_GATE_LABEL = ("Segoe UI", 13, "bold")
+FONT_BEV_GATE_STATUS = ("Segoe UI", 10, "bold")
 
 
 class MLCCanvas(ttk.Frame):
@@ -48,6 +50,8 @@ class MLCCanvas(ttk.Frame):
         self.start_datetime: Optional[datetime] = None
         self.current_datetime: Optional[datetime] = None
         self.end_datetime: Optional[datetime] = None
+        self.current_dose_rate: float = 0.0
+        self.current_gating: bool = False
 
         # Display parameters (mm to pixels)
         self.canvas_width = 540
@@ -117,6 +121,8 @@ class MLCCanvas(ttk.Frame):
         self.lbl_tx_start = ttk.Label(self, text="--")
         self.lbl_tx_cp = ttk.Label(self, text="--")
         self.lbl_tx_end = ttk.Label(self, text="--")
+        self.lbl_dose_rate = ttk.Label(self, text="--")
+        self.lbl_gating = ttk.Label(self, text="DISABLED")
 
         # Scrubber bar pinned to the bottom (always visible)
         self.ctrl_frame = ttk.Frame(self, style="Card.TFrame", padding=(8, 6))
@@ -270,6 +276,13 @@ class MLCCanvas(ttk.Frame):
             self.current_datetime = None
             self.lbl_tx_cp.config(text="--")
 
+        # Update Current Dose Rate (MU/min)
+        self.current_dose_rate = float(data.get("dose_rate", 0.0))
+
+        # Update Current Gating State
+        self.current_gating = bool(data.get("gating", False))
+        self.lbl_gating.config(text="ENABLED" if self.current_gating else "DISABLED")
+
     def _draw_axes(self) -> None:
         """Draws isocenter crosshairs, 50mm grid ticks, and the 57.4 x 22.0 cm field frame."""
         self.canvas.delete("all")
@@ -331,8 +344,10 @@ class MLCCanvas(ttk.Frame):
             # Field dimension label
             self.canvas.create_text(self.cx, fy1 - 12, text="Max Field: 57.4 × 22.0 cm (Elekta Unity)", fill="#64748b", font=FONT_BEV_CANVAS_SMALL, anchor="s", tags="grid")
 
-        # Always draw treatment timestamps on the blue background to the right of the MLC display
+        # Always draw treatment timestamps and dose rate bar on the blue background to the right of the MLC display
         self._draw_datetimes()
+        self._draw_doserate(self.current_dose_rate)
+        self._draw_doserate(self.current_dose_rate, self.current_gating)
 
     def _on_y2_orientation_changed(self, event=None) -> None:
         """Handles change in Y2 bank orientation (Right, Left, Top, Bottom)."""
@@ -517,8 +532,10 @@ class MLCCanvas(ttk.Frame):
                 self.canvas.create_text(self.cx, top_wall_px + 20, text="▲ Bank Y1", fill="#60a5fa", font=FONT_BEV_CANVAS_LARGE, anchor="center", tags="jaw")
                 self.canvas.create_text(self.cx, bot_wall_px - 20, text="Bank Y2 ▼", fill="#22d3ee", font=FONT_BEV_CANVAS_LARGE, anchor="center", tags="jaw")
 
-        # Always draw treatment timestamps on the blue background to the right of the MLC display
+        # Always draw treatment timestamps and dose rate bar on the blue background to the right of the MLC display
         self._draw_datetimes()
+        self._draw_doserate(self.current_dose_rate)
+        self._draw_doserate(self.current_dose_rate, self.current_gating)
 
     def _draw_datetimes(self) -> None:
         """Draws treatment timestamps to the right of the MLC display on top of the blue canvas background."""
@@ -615,6 +632,200 @@ class MLCCanvas(ttk.Frame):
             font=FONT_BEV_DT_VAL,
             anchor="w",
             tags="datetime"
+        )
+
+    def _draw_doserate(self, dose_rate: float) -> None:
+        """Draws current dose rate readout and a vertical bar graph (0 - 500 MU/min) below timestamps."""
+    def _draw_doserate(self, dose_rate: float, is_gating: Optional[bool] = None) -> None:
+        """Draws current dose rate readout, vertical bar graph (0 - 500 MU/min), and Gating indicator box."""
+        self.canvas.delete("doserate")
+
+        if is_gating is not None:
+            self.current_gating = is_gating
+        else:
+            is_gating = self.current_gating
+
+        w = self.canvas_width
+        if self.y2_orientation in ("Right", "Left"):
+            mlc_right_px = self.cx + (UNITY_PARK_WALL_MM * self.scale)
+        else:
+            mlc_right_px = self.cx + (UNITY_STACK_LIMIT_MM * self.scale)
+
+        # Position to the right of the MLC display on top of the blue background
+        if w >= 800:
+            x_label = max(mlc_right_px + 28.0, w - 275.0)
+        else:
+            x_label = max(10.0, w - 270.0)
+
+        box_pad = 12.0
+        box_w = 262.0
+        box_w = 270.0
+        box_x1 = x_label - box_pad
+        box_x2 = box_x1 + box_w
+        box_y1 = 122.0
+        box_h = 240.0
+        box_y2 = box_y1 + box_h
+
+        # Translucent dark card
+        self.canvas.create_rectangle(
+            box_x1, box_y1, box_x2, box_y2,
+            fill="#131d35",
+            outline="#334155",
+            width=1,
+            tags="doserate"
+        )
+
+        # Update compatibility label
+        # Update compatibility labels
+        rate_str = f"{dose_rate:.1f} MU/min"
+        self.lbl_dose_rate.config(text=rate_str)
+        self.lbl_gating.config(text="ENABLED" if is_gating else "DISABLED")
+
+        # Row 1: Dose Rate header readout
+        self.canvas.create_text(
+            box_x1 + 14.0, box_y1 + 16.0,
+            text="Dose Rate:",
+            fill="#94a3b8",
+            font=FONT_BEV_DT_LABEL_BOLD,
+            anchor="w",
+            tags="doserate"
+        )
+        rate_color = "#fbbf24" if dose_rate > 0.1 else "#64748b"
+        self.canvas.create_text(
+            box_x1 + 104.0, box_y1 + 16.0,
+            text=rate_str,
+            fill=rate_color,
+            font=FONT_BEV_DT_VAL_BOLD,
+            anchor="w",
+            tags="doserate"
+        )
+
+        # Vertical bar graph: 0 MU/min (bottom) to 500 MU/min (top)
+        bar_x1 = box_x1 + 32.0
+        bar_w = 26.0
+        bar_x1 = box_x1 + 24.0
+        bar_w = 22.0
+        bar_x2 = bar_x1 + bar_w
+        bar_top_y = box_y1 + 44.0
+        bar_bot_y = box_y1 + 218.0
+        bar_h = bar_bot_y - bar_top_y
+
+        # Meter background trough
+        self.canvas.create_rectangle(
+            bar_x1, bar_top_y, bar_x2, bar_bot_y,
+            fill="#0b1120",
+            outline="#334155",
+            width=1,
+            tags="doserate"
+        )
+
+        # Radiation level fill
+        frac = max(0.0, min(1.0, dose_rate / 500.0))
+        if frac > 0.0:
+            fill_top_y = bar_bot_y - (frac * bar_h)
+            # Amber/gold beam color
+            self.canvas.create_rectangle(
+                bar_x1 + 1, fill_top_y, bar_x2 - 1, bar_bot_y - 1,
+                fill="#f59e0b",
+                outline="",
+                tags="doserate"
+            )
+            # Bright yellow beam cap line
+            self.canvas.create_line(
+                bar_x1 + 1, fill_top_y, bar_x2 - 1, fill_top_y,
+                fill="#fef08a",
+                width=2,
+                tags="doserate"
+            )
+            # Level indicator arrow / pointer on left side
+            self.canvas.create_polygon(
+                bar_x1 - 2, fill_top_y,
+                bar_x1 - 8, fill_top_y - 4,
+                bar_x1 - 8, fill_top_y + 4,
+                fill="#fbbf24",
+                outline="",
+                tags="doserate"
+            )
+
+        # Scale ticks & labels
+        ticks = [
+            (500, bar_top_y, "500 MU/min", True),
+            (400, bar_bot_y - 0.80 * bar_h, "400", False),
+            (300, bar_bot_y - 0.60 * bar_h, "300", False),
+            (200, bar_bot_y - 0.40 * bar_h, "200", False),
+            (100, bar_bot_y - 0.20 * bar_h, "100", False),
+            (0,   bar_bot_y, "0 MU/min", True),
+        ]
+
+        for val, ty, lbl, is_major in ticks:
+            tick_len = 8 if is_major else 5
+            tick_len = 7 if is_major else 4
+            tick_color = "#94a3b8" if is_major else "#475569"
+            lbl_color = "#cbd5e1" if is_major else "#64748b"
+            lbl_font = ("Segoe UI", 10, "bold") if is_major else ("Segoe UI", 9)
+
+            self.canvas.create_line(
+                bar_x2, ty, bar_x2 + tick_len, ty,
+                fill=tick_color,
+                width=1.5 if is_major else 1,
+                tags="doserate"
+            )
+            self.canvas.create_text(
+                bar_x2 + 14.0, ty,
+                bar_x2 + 10.0, ty,
+                text=lbl,
+                fill=lbl_color,
+                font=lbl_font,
+                anchor="w",
+                tags="doserate"
+            )
+
+        # Gating box: located to the right of the bar graph inside the same subwindow
+        # Turns bright red (#dc2626) when gating is enabled
+        gate_x1 = box_x1 + 148.0
+        gate_x2 = box_x1 + 254.0
+        gate_y1 = box_y1 + 82.0
+        gate_y2 = box_y1 + 162.0
+
+        if is_gating:
+            gate_fill = "#dc2626"
+            gate_outline = "#ef4444"
+            gate_text_color = "#ffffff"
+            gate_status_text = "ENABLED"
+            gate_status_color = "#fecaca"
+            border_w = 2
+        else:
+            gate_fill = "#0b1120"
+            gate_outline = "#334155"
+            gate_text_color = "#64748b"
+            gate_status_text = "DISABLED"
+            gate_status_color = "#475569"
+            border_w = 1
+
+        self.canvas.create_rectangle(
+            gate_x1, gate_y1, gate_x2, gate_y2,
+            fill=gate_fill,
+            outline=gate_outline,
+            width=border_w,
+            tags="doserate"
+        )
+
+        gx_center = (gate_x1 + gate_x2) / 2.0
+        self.canvas.create_text(
+            gx_center, gate_y1 + 26.0,
+            text="Gating",
+            fill=gate_text_color,
+            font=FONT_BEV_GATE_LABEL,
+            anchor="center",
+            tags="doserate"
+        )
+        self.canvas.create_text(
+            gx_center, gate_y1 + 52.0,
+            text=gate_status_text,
+            fill=gate_status_color,
+            font=FONT_BEV_GATE_STATUS,
+            anchor="center",
+            tags="doserate"
         )
 
     def _on_mouse_hover(self, event: tk.Event) -> None:
