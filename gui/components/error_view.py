@@ -104,7 +104,9 @@ class ErrorView(ttk.Frame):
 
     def _plot_heatmap(self) -> None:
         """Plots 2D error heatmap."""
-        self.ax_heatmap.clear()
+        self.fig_heatmap.clear()
+        self.fig_heatmap.patch.set_facecolor(AppTheme.BG_MAIN)
+        self.ax_heatmap = self.fig_heatmap.add_subplot(1, 1, 1)
         bank = self.bank_var.get()
         matrix, leaves, times = self.analyzer.get_leaf_error_heatmap_matrix(bank)
 
@@ -126,8 +128,6 @@ class ErrorView(ttk.Frame):
         self.ax_heatmap.set_ylabel("Leaf Number (1 to 80)", fontsize=9, fontweight="bold")
 
         # Colorbar
-        if hasattr(self, "_cb_heatmap") and self._cb_heatmap:
-            self._cb_heatmap.remove()
         self._cb_heatmap = self.fig_heatmap.colorbar(im, ax=self.ax_heatmap, orientation="vertical", pad=0.02)
         self._cb_heatmap.set_label("Error (mm)", fontsize=8)
 

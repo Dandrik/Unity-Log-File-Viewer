@@ -12,15 +12,12 @@ class TRFReader:
     """Reads and parses Elekta Linac TRF binary files."""
 
     @staticmethod
-    def read_file(filepath: str) -> TRFDataset:
-        """Reads a .trf file, seamlessly supporting Elekta Unity MR-Linac extensions."""
+    def read_bytes(trf_contents: bytes, source_name: str = "") -> TRFDataset:
+        """Reads in-memory .trf bytes, seamlessly supporting Elekta Unity MR-Linac extensions."""
         from pymedphys._trf.decode.constants import CONFIG
         from pymedphys._trf.decode.partition import split_into_header_table
         from pymedphys._trf.decode.header import decode_header
         from pymedphys._trf.decode.table import decode_trf_table
-
-        with open(filepath, "rb") as f:
-            trf_contents = f.read()
 
         trf_header_bytes, trf_table_bytes = split_into_header_table(trf_contents)
         raw_header = decode_header(trf_header_bytes)
@@ -43,6 +40,13 @@ class TRFReader:
 
         # Construct Dataset
         return TRFReader._build_dataset(header, table_df)
+
+    @staticmethod
+    def read_file(filepath: str) -> TRFDataset:
+        """Reads a .trf file, seamlessly supporting Elekta Unity MR-Linac extensions."""
+        with open(filepath, "rb") as f:
+            trf_contents = f.read()
+        return TRFReader.read_bytes(trf_contents, source_name=filepath)
 
     @staticmethod
     def _build_header(raw_header) -> TRFHeader:
@@ -104,6 +108,10 @@ class TRFReader:
         gating = next((c for c in columns if any(k in c.lower() for k in ["gating", "gate", "beam hold", "beam_hold", "2546"])), None)
         control_point = next((c for c in columns if "control point" in c.lower() or ("cp" in c.lower() and "actual" in c.lower())), None)
 
+        # Linac State & MLC State / Status
+        linac_state = next((c for c in columns if "linac state" in c.lower() or ("linac" in c.lower() and "state" in c.lower())), None)
+        mlc_state = next((c for c in columns if ("mlc" in c.lower() and ("status" in c.lower() or "state" in c.lower()))), None)
+
         return TRFDataset(
             header=header,
             dataframe=df,
@@ -122,6 +130,8 @@ class TRFReader:
             dose_rate_col=dose_rate,
             gating_col=gating,
             control_point_col=control_point,
+            linac_state_col=linac_state,
+            mlc_state_col=mlc_state,
         )
 
     @staticmethod
@@ -171,6 +181,35 @@ class TRFReader:
         cp_arr = np.clip(1 + ((np.arange(num_points) / max(1, num_points - 1)) * (num_cps - 1)).astype(int), 1, num_cps)
         data["Control point/Actual Value (None)"] = cp_arr
 
+        # Linac State & MLC Status (matching realistic clinical delivery series)
+        linac_states = []
+        mlc_statuses = []
+        for i in range(num_points):
+            if i >= num_points - 15:
+                linac_states.append("Terminated Ok")
+                mlc_statuses.append(1)
+            elif 60 <= i < 85:
+                linac_states.append("Radiation On")
+                mlc_statuses.append(7300)  # Leaves not Ready Y2
+            elif 150 <= i < 180:
+                linac_states.append("Move Only")
+                mlc_statuses.append(7310)  # Leaves not Ready Y1
+            elif 180 <= i < 200:
+                linac_states.append("Intersegment")
+                mlc_statuses.append(1)  # Fallback to leaf tolerance (Y1 & Y2 lagging)
+            elif gating_arr[i] == 1:
+                linac_states.append("Intersegment")
+                mlc_statuses.append(7300)
+            elif dose_rates[i] > 0:
+                linac_states.append("Radiation On")
+                mlc_statuses.append(1)
+            else:
+                linac_states.append("Move Only")
+                mlc_statuses.append(7310)
+
+        data["Linac State/Actual Value (None)"] = linac_states
+        data["Mlc Status/Actual Value (None)"] = mlc_statuses
+
         # 80 Leaf Pairs (Agility MLC)
         # Generate an aperture (e.g. shaped like a target tumor volume that shifts)
         leaf_indices = np.arange(1, 81)
@@ -192,9 +231,19 @@ class TRFReader:
             y1_err = np.random.normal(0, err_scale, num_points)
             y2_err = np.random.normal(0, err_scale, num_points)
 
-            # Introduce an occasional spike on leaf 24 (e.g. motor resistance)
+            # Introduce realistic leaf transition lags for QA state verification:
+            # Leaf 40 on Y2 has a transient repositioning delay during frames 60-85 -> Leaves Not Ready Y2
+            if leaf_num == 40:
+                y2_err[60:85] += 1.30
+
+            # Leaf 24 on Y1 has a motor resistance lag during frames 150-180 -> Leaves Not Ready Y1
             if leaf_num == 24:
                 y1_err[150:180] += 1.25
+
+            # Gating segment repositioning (frames 180-200) -> Leaves Not Ready Y1 & Y2
+            if leaf_num in (35, 45):
+                y1_err[180:200] += 1.40
+                y2_err[180:200] += 1.40
 
             data[f"Y1 Leaf {leaf_num}/Scaled Actual (mm)"] = y1_nominal + y1_err
             data[f"Y1 Leaf {leaf_num}/Positional Error (mm)"] = y1_err

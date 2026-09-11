@@ -225,6 +225,12 @@ class TextLogView(ttk.Frame):
         self.lbl_file_info.config(text="Loaded: Sample Elekta Unity Machine Event Log")
         self._on_logs_loaded()
 
+    def load_raw_text(self, text: str, source_name: str = "") -> None:
+        """Loads a raw log text string into the log view."""
+        self.parser.parse_text(text)
+        self.lbl_file_info.config(text=f"Loaded: {source_name}" if source_name else "Loaded from package")
+        self._on_logs_loaded()
+
     def _on_logs_loaded(self) -> None:
         """Updates components and KPI stats after loading logs."""
         comps = self.parser.get_components()

@@ -6,6 +6,7 @@ from typing import Callable, Dict, List, Optional
 from datetime import datetime, timedelta
 import math
 from core.trf_analyzer import TRFAnalyzer
+from core.mlc_codes import format_linac_state, format_mlc_state
 from gui.styles import AppTheme
 
 
@@ -61,6 +62,8 @@ class MLCCanvas(ttk.Frame):
         self.current_cp_target_dose: float = 0.0
         self.current_total_dose: float = 0.0
         self.current_total_target_dose: float = 0.0
+        self.current_linac_state: str = "--"
+        self.current_mlc_state: str = "--"
 
         # Display parameters (mm to pixels)
         self.canvas_width = 540
@@ -136,6 +139,8 @@ class MLCCanvas(ttk.Frame):
         self.lbl_control_point = ttk.Label(self, text="Control Point 1/1")
         self.lbl_cp_dose = ttk.Label(self, text="CP Dose: 0.0 / 0.0 MU")
         self.lbl_total_dose = ttk.Label(self, text="Total Dose: 0.0 / 0.0 MU")
+        self.lbl_linac_state = ttk.Label(self, text="--")
+        self.lbl_mlc_state = ttk.Label(self, text="--")
 
         # Scrubber bar pinned to the bottom (always visible)
         self.ctrl_frame = ttk.Frame(self, style="Card.TFrame", padding=(8, 6))
@@ -314,6 +319,12 @@ class MLCCanvas(ttk.Frame):
         self.lbl_cp_dose.config(text=f"CP Dose: {self.current_cp_dose:.1f} / {self.current_cp_target_dose:.1f} MU")
         self.lbl_total_dose.config(text=f"Total Dose: {self.current_total_dose:.1f} / {self.current_total_target_dose:.1f} MU")
 
+        # Update Linac State & MLC State
+        self.current_linac_state = str(data.get("linac_state", "--"))
+        self.current_mlc_state = str(data.get("mlc_state", "--"))
+        self.lbl_linac_state.config(text=self.current_linac_state)
+        self.lbl_mlc_state.config(text=self.current_mlc_state)
+
     def _draw_axes(self) -> None:
         """Draws isocenter crosshairs, 50mm grid ticks, and the 57.4 x 22.0 cm field frame."""
         self.canvas.delete("all")
@@ -382,6 +393,7 @@ class MLCCanvas(ttk.Frame):
         self._draw_control_point(self.current_cp, self.total_cp)
         self._draw_cp_dose(self.current_cp_dose, self.current_cp_target_dose)
         self._draw_total_dose(self.current_total_dose, self.current_total_target_dose)
+        self._draw_state_display(self.current_linac_state, self.current_mlc_state)
 
     def _on_y2_orientation_changed(self, event=None) -> None:
         """Handles change in Y2 bank orientation (Right, Left, Top, Bottom)."""
@@ -573,6 +585,7 @@ class MLCCanvas(ttk.Frame):
         self._draw_control_point(self.current_cp, self.total_cp)
         self._draw_cp_dose(self.current_cp_dose, self.current_cp_target_dose)
         self._draw_total_dose(self.current_total_dose, self.current_total_target_dose)
+        self._draw_state_display(self.current_linac_state, self.current_mlc_state)
 
     def _draw_datetimes(self) -> None:
         """Draws treatment timestamps to the right of the MLC display on top of the blue canvas background."""
@@ -1367,6 +1380,163 @@ class MLCCanvas(ttk.Frame):
             font=("Segoe UI", 9),
             anchor="e",
             tags="total_dose_display"
+        )
+
+    def _draw_state_display(self, linac_state: Optional[str] = None, mlc_state: Optional[str] = None) -> None:
+        """Draws Linac State and MLC State telemetry card below the Total Dose graph."""
+        self.canvas.delete("state_display")
+
+        if linac_state is not None:
+            self.current_linac_state = format_linac_state(linac_state)
+        elif self.current_linac_state and self.current_linac_state != "--":
+            self.current_linac_state = format_linac_state(self.current_linac_state)
+        linac_state = self.current_linac_state
+
+        if mlc_state is not None:
+            self.current_mlc_state = format_mlc_state(mlc_state)
+        elif self.current_mlc_state and self.current_mlc_state != "--":
+            self.current_mlc_state = format_mlc_state(self.current_mlc_state)
+        mlc_state = self.current_mlc_state
+
+        w = self.canvas_width
+        if self.y2_orientation in ("Right", "Left"):
+            mlc_right_px = self.cx + (UNITY_PARK_WALL_MM * self.scale)
+        else:
+            mlc_right_px = self.cx + (UNITY_STACK_LIMIT_MM * self.scale)
+
+        if w >= 800:
+            x_label = max(mlc_right_px + 28.0, w - 275.0)
+        else:
+            x_label = max(10.0, w - 270.0)
+
+        box_pad = 12.0
+        box_w = 278.0
+        box_x1 = x_label - box_pad
+        box_x2 = box_x1 + box_w
+        box_y1 = 514.0
+        box_h = 56.0
+        box_y2 = box_y1 + box_h
+
+        # Translucent dark card
+        self.canvas.create_rectangle(
+            box_x1, box_y1, box_x2, box_y2,
+            fill="#131d35",
+            outline="#334155",
+            width=1,
+            tags="state_display"
+        )
+
+        # Update compatibility labels
+        self.lbl_linac_state.config(text=str(linac_state))
+        self.lbl_mlc_state.config(text=str(mlc_state))
+
+        # Determine Linac State color & status dot
+        ls_str = str(linac_state).strip()
+        ls_upper = ls_str.upper()
+        if "RADIATION" in ls_upper:
+            ls_color = "#f59e0b"  # Radiation amber
+            ls_dot = "#f59e0b"
+        elif "MOVE" in ls_upper:
+            ls_color = "#38bdf8"  # Cyan motion
+            ls_dot = "#38bdf8"
+        elif "FAULT" in ls_upper:
+            ls_color = "#ef4444"  # Red fault
+            ls_dot = "#ef4444"
+        elif "OK" in ls_upper:
+            ls_color = "#22c55e"  # Emerald green completed
+            ls_dot = "#22c55e"
+        elif "INTERSEGMENT" in ls_upper or "CHECKING" in ls_upper:
+            ls_color = "#93c5fd"  # Soft blue
+            ls_dot = "#93c5fd"
+        elif "PAUSE" in ls_upper or "INTERRUPT" in ls_upper:
+            ls_color = "#eab308"  # Warning yellow
+            ls_dot = "#eab308"
+        else:
+            ls_color = "#e2e8f0"
+            ls_dot = "#94a3b8"
+
+        # Determine MLC State color & status dot
+        ms_str = str(mlc_state).strip()
+        ms_upper = ms_str.upper()
+        if "NOT READY" in ms_upper or "MOVING" in ms_upper or "MOVEMENT" in ms_upper or "PARKING" in ms_upper:
+            ms_color = "#f59e0b"  # Amber warning for Leaves Not Ready / Movement
+            ms_dot = "#f59e0b"
+        elif "MLC OK" in ms_upper or "READY" in ms_upper:
+            ms_color = "#22c55e"  # Emerald green for MLC OK
+            ms_dot = "#22c55e"
+        elif any(k in ms_upper for k in [
+            "FAULT", "ERROR", "INTERLOCK", "TIMEOUT", "RESET REQUIRED", "FAILURE",
+            "LOSS OF", "LIMIT SWITCH", "WATCHDOG", "NOT VALID", "ILLEGAL", "INCORRECT",
+            "OUT OF TOLERANCE", "TOO MANY", "NOT OK", "NOT CALIBRATED", "EXCEPTION"
+        ]):
+            ms_color = "#ef4444"  # Red fault
+            ms_dot = "#ef4444"
+        else:
+            ms_color = "#38bdf8"  # Sky blue for positions, voltage rails, sensors, and links
+            ms_dot = "#38bdf8"
+
+        # Row 1: Linac State
+        self.canvas.create_text(
+            box_x1 + 14.0, box_y1 + 16.0,
+            text="Linac State:",
+            fill="#94a3b8",
+            font=FONT_BEV_DT_LABEL_BOLD,
+            anchor="w",
+            tags="state_display"
+        )
+        self.canvas.create_oval(
+            box_x1 + 110.0 - 3.5, box_y1 + 16.0 - 3.5,
+            box_x1 + 110.0 + 3.5, box_y1 + 16.0 + 3.5,
+            fill=ls_dot,
+            outline="",
+            tags="state_display"
+        )
+        if len(ls_str) > 22:
+            ls_font = ("Segoe UI", 8, "bold")
+        elif len(ls_str) > 16:
+            ls_font = ("Segoe UI", 9, "bold")
+        else:
+            ls_font = ("Segoe UI", 10, "bold")
+        self.canvas.create_text(
+            box_x1 + 124.0, box_y1 + 16.0,
+            text=ls_str,
+            fill=ls_color,
+            font=ls_font,
+            anchor="w",
+            tags="state_display"
+        )
+
+        # Row 2: MLC State
+        self.canvas.create_text(
+            box_x1 + 14.0, box_y1 + 38.0,
+            text="MLC State:",
+            fill="#94a3b8",
+            font=FONT_BEV_DT_LABEL_BOLD,
+            anchor="w",
+            tags="state_display"
+        )
+        self.canvas.create_oval(
+            box_x1 + 110.0 - 3.5, box_y1 + 38.0 - 3.5,
+            box_x1 + 110.0 + 3.5, box_y1 + 38.0 + 3.5,
+            fill=ms_dot,
+            outline="",
+            tags="state_display"
+        )
+        if len(ms_str) > 30:
+            ms_font = ("Segoe UI", 7, "bold")
+        elif len(ms_str) > 22:
+            ms_font = ("Segoe UI", 8, "bold")
+        elif len(ms_str) > 16:
+            ms_font = ("Segoe UI", 9, "bold")
+        else:
+            ms_font = ("Segoe UI", 10, "bold")
+        self.canvas.create_text(
+            box_x1 + 124.0, box_y1 + 38.0,
+            text=ms_str,
+            fill=ms_color,
+            font=ms_font,
+            anchor="w",
+            tags="state_display"
         )
 
     def _on_mouse_hover(self, event: tk.Event) -> None:

@@ -98,6 +98,8 @@ class TRFDataset:
     dose_rate_col: Optional[str] = None
     gating_col: Optional[str] = None
     control_point_col: Optional[str] = None
+    linac_state_col: Optional[str] = None
+    mlc_state_col: Optional[str] = None
     qa_stats: Optional[DeliveryQAStats] = None
     leaf_stats: List[LeafErrorStats] = field(default_factory=list)
 

@@ -1,12 +1,15 @@
 """Main application window for Elekta Unity Log & TRF File Viewer."""
 
 import tkinter as tk
-from tkinter import ttk, messagebox
+from tkinter import ttk, messagebox, filedialog
 import sys
+from typing import Optional
 
 from gui.styles import AppTheme, configure_app_styles
 from gui.components.trf_view import TRFView
 from gui.components.text_log_view import TextLogView
+from core.sdd_package import SDDPackage, SDDTRFEntry, SDDLogEntry
+from gui.components.sdd_navigator import SDDNavigatorDialog
 
 
 class UnityLogViewerApp(tk.Tk):
@@ -18,6 +21,10 @@ class UnityLogViewerApp(tk.Tk):
         self.geometry("1280x850")
         self.minsize(1024, 700)
 
+        # Active SDD package tracking
+        self.active_sdd: Optional[SDDPackage] = None
+        self.sdd_dialog: Optional[SDDNavigatorDialog] = None
+
         # Configure styles
         self.style = configure_app_styles(self)
         self.configure(bg=AppTheme.BG_MAIN)
@@ -27,14 +34,23 @@ class UnityLogViewerApp(tk.Tk):
         self._build_body()
         self._build_statusbar()
 
+        # Keyboard shortcuts
+        self.bind("<Control-Shift-O>", lambda e: self._menu_open_sdd())
+        self.bind("<Control-Shift-o>", lambda e: self._menu_open_sdd())
+        self.bind("<Control-b>", lambda e: self._menu_browse_sdd())
+        self.bind("<Control-B>", lambda e: self._menu_browse_sdd())
+
     def _build_menu(self) -> None:
         """Constructs application menu bar."""
         menubar = tk.Menu(self)
 
         # File menu
         file_menu = tk.Menu(menubar, tearoff=0)
-        file_menu.add_command(label="Open .TRF Delivery File...", command=self._menu_open_trf)
-        file_menu.add_command(label="Open Machine Text Log...", command=self._menu_open_text_log)
+        file_menu.add_command(label="Open SDD Package (.zip / folder)...", command=self._menu_open_sdd, accelerator="Ctrl+Shift+O")
+        file_menu.add_command(label="Browse Active SDD Deliveries...", command=self._menu_browse_sdd, accelerator="Ctrl+B")
+        file_menu.add_separator()
+        file_menu.add_command(label="Open .TRF Delivery File...", command=self._menu_open_trf, accelerator="Ctrl+O")
+        file_menu.add_command(label="Open Machine Text Log...", command=self._menu_open_text_log, accelerator="Ctrl+L")
         file_menu.add_separator()
         file_menu.add_command(label="Load Sample TRF Delivery", command=self._menu_sample_trf)
         file_menu.add_command(label="Load Sample Text Log", command=self._menu_sample_text_log)
@@ -81,6 +97,21 @@ class UnityLogViewerApp(tk.Tk):
         # Right quick sample launch buttons
         quick_box = ttk.Frame(self.header_frame, style="Header.TFrame")
         quick_box.pack(side="right")
+
+        btn_open_sdd = tk.Button(
+            quick_box,
+            text="📦 Open SDD Package (.zip)",
+            bg="#0284c7",
+            fg="#ffffff",
+            activebackground="#0369a1",
+            activeforeground="#ffffff",
+            font=("Segoe UI", 9, "bold"),
+            relief="flat",
+            padx=12,
+            pady=4,
+            command=self._menu_open_sdd
+        )
+        btn_open_sdd.pack(side="left", padx=4)
 
         btn_demo_trf = tk.Button(
             quick_box,
@@ -143,6 +174,90 @@ class UnityLogViewerApp(tk.Tk):
         self.status_right.pack(side="right")
 
     # Menu Callbacks
+    def _menu_open_sdd(self) -> None:
+        """Opens file dialog for Elekta SDD (.zip) or folder."""
+        filepath = filedialog.askopenfilename(
+            title="Select Elekta Service Diagnostic Data (SDD) Package",
+            filetypes=[
+                ("SDD Packages & Zip Files", "*.zip"),
+                ("All Files", "*.*")
+            ]
+        )
+        if not filepath:
+            return
+
+        try:
+            if self.active_sdd:
+                self.active_sdd.close()
+
+            self.active_sdd = SDDPackage.open(filepath)
+            self.status_left.config(
+                text=f"Loaded SDD [{self.active_sdd.machine_info.machine_id}]: {len(self.active_sdd.trf_entries)} TRF deliveries, {len(self.active_sdd.log_entries)} logs"
+            )
+
+            # Open Navigator Dialog
+            if self.sdd_dialog and self.sdd_dialog.winfo_exists():
+                self.sdd_dialog.destroy()
+
+            self.sdd_dialog = SDDNavigatorDialog(
+                self,
+                self.active_sdd,
+                on_load_trf=self.load_sdd_trf,
+                on_load_log=self.load_sdd_log
+            )
+        except Exception as e:
+            messagebox.showerror(
+                "Error Loading SDD Package",
+                f"Failed to load SDD package:\n{e}\n\nPlease verify that the file is a valid Elekta SDD archive."
+            )
+
+    def _menu_browse_sdd(self) -> None:
+        """Opens or brings to front the active SDD package navigator."""
+        if not self.active_sdd:
+            self._menu_open_sdd()
+            return
+
+        if self.sdd_dialog and self.sdd_dialog.winfo_exists():
+            self.sdd_dialog.lift()
+            self.sdd_dialog.focus_force()
+        else:
+            self.sdd_dialog = SDDNavigatorDialog(
+                self,
+                self.active_sdd,
+                on_load_trf=self.load_sdd_trf,
+                on_load_log=self.load_sdd_log
+            )
+
+    def load_sdd_trf(self, package: SDDPackage, entry: SDDTRFEntry) -> None:
+        """Decodes and loads a TRF delivery from an SDD package into the delivery analyzer."""
+        try:
+            dataset = package.read_trf_dataset(entry)
+            self.notebook.select(0)
+            source_name = f"SDD [{package.machine_info.machine_id}]: {entry.display_name} ({entry.mu:.1f} MU)"
+            self.trf_view.load_dataset(dataset, source_name=source_name)
+            self.status_left.config(text=f"Loaded from SDD: {entry.display_name} ({entry.mu:.1f} MU)")
+        except Exception as e:
+            messagebox.showerror(
+                "Error Loading Delivery",
+                f"Failed to decode TRF delivery '{entry.display_name}':\n{e}",
+                parent=self.sdd_dialog if self.sdd_dialog and self.sdd_dialog.winfo_exists() else self
+            )
+
+    def load_sdd_log(self, package: SDDPackage, entry: SDDLogEntry) -> None:
+        """Extracts and loads a machine or subsystem log from an SDD package into the log viewer."""
+        try:
+            log_text = package.get_log_text(entry.filename)
+            self.notebook.select(1)
+            source_name = f"SDD [{package.machine_info.machine_id}]: {entry.display_name}"
+            self.text_log_view.load_raw_text(log_text, source_name=source_name)
+            self.status_left.config(text=f"Loaded Log from SDD: {entry.display_name}")
+        except Exception as e:
+            messagebox.showerror(
+                "Error Loading Log",
+                f"Failed to read log '{entry.display_name}':\n{e}",
+                parent=self.sdd_dialog if self.sdd_dialog and self.sdd_dialog.winfo_exists() else self
+            )
+
     def _menu_open_trf(self) -> None:
         self.notebook.select(0)
         self.trf_view.open_trf_file()

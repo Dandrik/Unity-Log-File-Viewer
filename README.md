@@ -8,6 +8,15 @@ A Python desktop GUI application built for the **Elekta Unity MR-Linac system** 
 
 ## Key Capabilities
 
+### 📦 Elekta Unity SDD (Service Diagnostic Data) Package Support
+* **Direct Zip Archive & Folder Ingestion**:
+  * Open complete Elekta Unity SDD `.zip` packages (e.g. `SDD+TRCC-NRT-600064+...zip`) or extracted folders directly via quick launch header button (`📦 Open SDD Package (.zip)`) or `Ctrl+Shift+O`.
+  * Zero-extraction, high-speed in-memory indexing: extracts and decodes headers for 50+ TRFs in under 100 milliseconds without extracting files to disk.
+* **Interactive SDD Package Navigator (`Ctrl+B`)**:
+  * **🎯 Treatment Deliveries Tab**: View, search, and filter all 25 Hz binary TRF deliveries by category (`Clinical Treatment`, `Daily QA`, `Warmup`, `Shape / Test`), date/time, field name, delivered MU, and size. Double-click or click **Load into Viewer** to immediately inspect in Treatment Playback, Gantry Dynamics, and Leaf QA.
+  * **📋 Subsystem Logs Tab**: Browse and inspect machine event logs (`LOGFILE00000xxxx`), manifests (`RTDManifest.txt`), and registry dumps (`RTDRegistry.txt`). Double-click or click **Load into Text Log Viewer** to parse and analyze in the Machine Event & Text Logs tab.
+  * **ℹ️ Machine Info & Manifest Tab**: Inspect linac machine ID (e.g. `TRCC-NRT-600064`), SDD export timestamp, Windows OS build, network IP addresses, and the complete formatted RTD Manifest.
+
 ### 🎯 Treatment Playback (Beam's Eye View)
 * **Elekta Unity Physical Collimator Calibration**:
   * Real-time 2D rendering calibrated to exact **Elekta Unity MR-Linac** physical geometry:
@@ -53,6 +62,28 @@ A Python desktop GUI application built for the **Elekta Unity MR-Linac system** 
   * Live numeric readout (`Total Dose: <cumulative> / <total> MU`) with overall treatment completion percentage (e.g. `Total Dose: 25.0 / 250.0 MU` | `10%`).
   * Horizontal progress bar illustrating overall field delivery with emerald green fill (`#059669`), bright mint cap line (`#34d399`), and dark trough (`#0b1120`).
   * Sub-labels indicating `0.0 MU` and total planned dose (e.g. `250.0 MU` or `761.4 MU`) underneath the bar.
+* **Linac State & MLC State Machine Status Card**:
+  * Positioned directly below the Total Dose graph on the deep blue canvas background.
+  * Live **Linac State** readout with parenthesized state code and color-coded status indicator dot:
+    * `Radiation On (42)` (vibrant amber dot and text during radiation delivery)
+    * `Move Only (39)` (sky blue dot during gantry and MLC repositioning)
+    * `Intersegment (41)` (soft blue dot between beam segments)
+    * `Terminated Ok (46)` (emerald green dot on successful delivery completion)
+    * `Terminated Fault (47)` (bright red dot in event of beam termination fault)
+  * Live **MLC State** readout with parenthesized hardware code and full Elekta MLC Controller code lookup (`core/mlc_codes.py`):
+    * Decodes over 400 official Elekta hardware status, interlock, positioning, and fault codes (7000–8238):
+      * `1` / `0`: `MLC OK (1)` (emerald green dot `#22c55e` and bold text when all leaves are in position)
+      * `7300`: `Leaves not Ready Y2 (7300)` (amber warning dot `#f59e0b` when Bank Y2 leaves are moving or settling)
+      * `7310`: `Leaves not Ready Y1 (7310)` (amber warning dot `#f59e0b` when Bank Y1 leaves are moving or settling)
+      * `7015`: `Incorrect Sequence ID (7015)` (bright red fault dot `#ef4444` when segment sequencing fails)
+      * `7460`: `Diaphragm Position X2 (7460)` (sky blue dot `#38bdf8` for collimator hardware positioning)
+      * `7615`: `All Voltage Rails (7615)` (sky blue dot `#38bdf8` for hardware rail telemetry)
+      * `7000` / `8050`: `Prescription Not OK (7000)` (bright red dot `#ef4444` for prescription mismatch)
+      * `8040` / `8041`: `Out of tolerance Y2 Leaves (8040)` / `Out of tolerance Y1 Leaves (8041)` (red fault dot `#ef4444`)
+      * `8101`–`8180`: `Loss Of Leaf Pair 1` through `80` (red fault dot `#ef4444`)
+      * `8200`–`8238`: DLG & Diaphragm voltage and sensor fault codes (red fault dot `#ef4444`)
+    * Physical Leaf Tolerance Fallback: When no hardware code is asserted or status is `1`, evaluates physical leaf positioning against Elekta's $1.0\text{ mm}$ tolerance threshold (`MLC OK (1)`, `Leaves not Ready Y2 (7300)`, `Leaves not Ready Y1 (7310)`, `Leaves not Ready Y1 & Y2 (7300 & 7310)`).
+  * Seamlessly synchronized with scrubbing and variable-speed playback across clinical binary TRF datasets and synthetic simulation.
 * **High-Visibility Scaled Typography**:
   * All canvas readouts, axis labels, and beam metric texts are scaled 1.5x larger for optimal viewing on clinical monitors.
 * **Delivered Monitor Unit (MU) Calibration & Real-Time Tracking**:

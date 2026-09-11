@@ -9,6 +9,41 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased] - 2026-09-11
 
+- **Elekta Unity SDD (Service Diagnostic Data) Package Support**:
+  - Added native support for opening complete Elekta Unity SDD `.zip` packages (e.g. `SDD+TRCC-NRT-600064+...zip`) and extracted directories without requiring manual decompression.
+  - Implemented `core/sdd_package.py` providing zero-extraction streaming indexing: reads the first 16 KB of each `.trf` in the zip archive to index timestamps, field names, and delivered MUs in under 100 ms for 50+ deliveries.
+  - Added delivery category classification based on field naming heuristics (`Warmup`, `Daily QA`, `Shape / Test`, `Clinical Treatment`).
+  - Added in-memory binary decoding via `TRFReader.read_bytes(trf_contents, source_name)` to eliminate intermediate disk writes.
+  - Added log string ingestion via `TextLogView.load_raw_text(text, source_name)` with automatic UTF-8 / UTF-16 decoding and .NET serialized logger unmasking.
+  - Built interactive `SDDNavigatorDialog` (`gui/components/sdd_navigator.py`) with:
+    - **Header bar**: Linac ID badge (`TRCC-NRT-600064`), export timestamp, package filename, delivery count, and log file count badges.
+    - **Treatment Deliveries tab**: Search filter, category dropdown, sortable Treeview table (Date/Time, Plan/Field, Category, Delivered MU, Size, Filename), and one-click "Load into Viewer" button. Calibrated category row typography (`clinical`: dark slate `#0f172a`, `Daily QA`: deep sky blue `#0369a1`, `Warmup`: rich amber `#b45309`, `Shape / Test`: deep purple `#6d28d9`) for crisp, high-contrast legibility against the white table background.
+    - **Subsystem Logs tab**: Searchable treeview of `LOGFILE00000xxxx` event logs and diagnostics with one-click "Load into Text Log Viewer" button.
+    - **Machine Info & Manifest tab**: Formatted machine specifications (Machine ID, Windows OS, IPs) and full searchable RTD Manifest.
+  - Added quick launch button `📦 Open SDD Package (.zip)` in the top application header and File menu items (`Ctrl+Shift+O` and `Ctrl+B`).
+  - Added automated unit and GUI integration tests in `tests/test_sdd.py`.
+- **Linac State & MLC State Machine Status Card**:
+  - Added real-time **Linac State** and **MLC State** telemetry card positioned directly below the Total Dose graph on the deep blue canvas background.
+  - Added parenthesized integer code display to both **Linac State** and **MLC State** readouts (e.g. `Radiation On (42)`, `Move Only (39)`, `MLC OK (1)`, `Leaves not Ready Y2 (7300)`, `Incorrect Sequence ID (7015)`).
+  - Line 1 displays **Linac State** (`Linac State: <state> (<code_id>)`) with an active status dot:
+    - `Radiation On (42)`: amber indicator dot and text during beam-on delivery.
+    - `Move Only (39)`: sky blue indicator dot during gantry and MLC repositioning.
+    - `Intersegment (41)`: soft blue indicator dot between segments.
+    - `Terminated Ok (46)`: emerald green indicator dot upon successful treatment finish.
+    - `Terminated Fault (47)`: bright red indicator dot upon fault termination.
+  - Line 2 displays **MLC State** (`MLC State: <state> (<code_id>)`) with active status dot, full Elekta MLC Controller codes decoding, and leaf tolerance logic:
+    - Added dedicated module `core/mlc_codes.py` defining over 400 official Elekta hardware status, interlock, positioning, and fault codes (7000–8238), `ELEKTA_LINAC_CODES` (0–47), bidirectional lookups, and helper functions `format_linac_state` and `format_mlc_state`.
+    - Integrated with TRF channel `Mlc Status/Actual Value (None)` to dynamically decode hardware states including `MLC OK (1)`, `Leaves not Ready Y2 (7300)`, `Leaves not Ready Y1 (7310)`, `Incorrect Sequence ID (7015)`, `Diaphragm Position X2 (7460)`, `All Voltage Rails (7615)`, `Prescription Not OK (7000/8050)`, `Out of tolerance` (8040/8041), and leaf loss/pot/sensor faults (8101–8238).
+    - Added physical leaf bank readiness tolerance fallback ($\le 1.0\text{ mm}$ tolerance threshold) returning `MLC OK (1)`, `Leaves not Ready Y2 (7300)`, `Leaves not Ready Y1 (7310)`, and `Leaves not Ready Y1 & Y2 (7300 & 7310)`.
+    - Enhanced color-coded status styling: emerald green for OK/Ready, amber for movement/not ready, bright red for faults/interlocks/errors/timeouts, and sky blue for positions and hardware rails.
+    - Calibrated status dot alignment (`box_x1 + 110px`) and state text offset (`box_x1 + 124px`) to provide ample breathing room and eliminate any visual overlap with the `"State:"` text labels.
+    - Added dynamic typography scaling (size 7 for > 30 characters, size 8 for > 22 characters, size 9 for > 16 characters) to guarantee clean fit without clipping.
+    - Updated unit test `test_treatment_playback_linac_and_mlc_state_card` in `tests/test_gui.py` asserting code lookups, frame transitions, and real clinical binary TRF file decoding with parenthesized codes.
+- **Bug Fix - Consecutive TRF File Loading**:
+  - Resolved `'NoneType' object has no attribute 'set_subplotspec'` error occurring when opening or loading a different `.trf` file while a dataset was already loaded.
+  - Root Cause: In `gui/components/error_view.py`, `self._cb_heatmap.remove()` attempted to restore subplotspec attributes on an axes cleared by `self.ax_heatmap.clear()`, causing Matplotlib's internal colorbar deallocation to fail.
+  - Fix: Updated `ErrorView._plot_heatmap` to cleanly reset the figure via `self.fig_heatmap.clear()`, restore background theme facecolor, and cleanly recreate the main subplot axes before attaching the colorbar.
+  - Added automated test `test_consecutive_trf_dataset_loads` validating consecutive dataset reloads (both synthetic and real clinical binaries) and bank toggles.
 - **Control Point Delivered Dose & Progress Bar**:
   - Added real-time control point delivered dose readout (`CP Dose: <delivered> / <target> MU`) with percentage badge positioned directly below the control point card.
   - Added horizontal bar graph illustrating current control point dose progress with amber radiation fill (`#d97706`), bright gold cap line (`#fbbf24`), dark trough (`#0b1120`), and sub-labels (`0.0 MU` and target step MU).

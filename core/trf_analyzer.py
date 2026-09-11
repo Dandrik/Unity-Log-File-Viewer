@@ -5,6 +5,7 @@ import numpy as np
 import pandas as pd
 
 from core.models import DeliveryQAStats, LeafErrorStats, TRFDataset
+from core.mlc_codes import decode_mlc_status, ELEKTA_MLC_CODES, format_linac_state, format_mlc_state
 
 
 class TRFAnalyzer:
@@ -366,6 +367,56 @@ class TRFAnalyzer:
         if total_target_dose <= 0:
             total_target_dose = mu
 
+        # Linac State (e.g. 'Radiation On (42)', 'Move Only (39)', 'Terminated Ok (46)')
+        linac_state = "--"
+        if self.dataset.linac_state_col and self.dataset.linac_state_col in row:
+            raw_ls = row[self.dataset.linac_state_col]
+            if raw_ls is not None and not pd.isna(raw_ls):
+                linac_state = format_linac_state(raw_ls)
+        elif dose_rate > 0.0:
+            linac_state = format_linac_state("Radiation On")
+        else:
+            linac_state = format_linac_state("Ready")
+
+        # MLC State determination (e.g. 'MLC OK (1)', 'Leaves not Ready Y2 (7300)')
+        # 1. Primary: Hardware MLC status code from TRF dataset (e.g. Mlc Status/Actual Value (None))
+        mlc_state = None
+        if self.dataset.mlc_state_col and self.dataset.mlc_state_col in row:
+            raw_ms = row[self.dataset.mlc_state_col]
+            if raw_ms is not None and not pd.isna(raw_ms):
+                try:
+                    code_int = int(float(raw_ms))
+                    if code_int not in (0, 1):
+                        # Hardware reported a specific interlock/status/fault code from Elekta table
+                        mlc_state = format_mlc_state(code_int)
+                except (ValueError, TypeError):
+                    raw_str = str(raw_ms).strip()
+                    if raw_str and raw_str != "--":
+                        mlc_state = format_mlc_state(raw_str)
+
+        # 2. Secondary: If no hardware error code is asserted (or code is 1/0/None),
+        # evaluate physical leaf positioning errors against Elekta's 1.0 mm tolerance
+        if mlc_state is None:
+            if y1_err or y2_err:
+                y1_max_err = max([abs(e) for e in y1_err], default=0.0)
+                y2_max_err = max([abs(e) for e in y2_err], default=0.0)
+                tol = 1.0  # Elekta 1.0 mm leaf positioning tolerance
+                y1_ready = y1_max_err <= tol
+                y2_ready = y2_max_err <= tol
+
+                if y1_ready and y2_ready:
+                    mlc_state = "MLC OK (1)"
+                elif y1_ready and not y2_ready:
+                    mlc_state = "Leaves not Ready Y2 (7300)"
+                elif not y1_ready and y2_ready:
+                    mlc_state = "Leaves not Ready Y1 (7310)"
+                else:
+                    mlc_state = "Leaves not Ready Y1 & Y2 (7300 & 7310)"
+            elif self.dataset.mlc_state_col and self.dataset.mlc_state_col in row:
+                mlc_state = format_mlc_state(row[self.dataset.mlc_state_col])
+            else:
+                mlc_state = "MLC OK (1)"
+
         return {
             "index": index,
             "time_s": time_s,
@@ -386,5 +437,7 @@ class TRFAnalyzer:
             "cp_target_dose": cp_target_dose,
             "total_dose": mu,
             "total_target_dose": total_target_dose,
+            "linac_state": linac_state,
+            "mlc_state": mlc_state,
         }
 

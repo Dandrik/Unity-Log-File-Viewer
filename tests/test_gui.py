@@ -321,6 +321,172 @@ class TestGUI(unittest.TestCase):
         self.assertIn("125.0 / 250.0 MU", tot_texts_custom)
         self.assertIn("50%", tot_texts_custom)
 
+    def test_consecutive_trf_dataset_loads(self):
+        """Verifies that loading multiple TRF datasets consecutively does not raise set_subplotspec error."""
+        # 1st load
+        self.app.trf_view.load_sample_data()
+        self.app.update()
+        self.assertIsNotNone(self.app.trf_view.analyzer)
+
+        # 2nd load
+        self.app.trf_view.load_sample_data()
+        self.app.update()
+        self.assertIsNotNone(self.app.trf_view.analyzer)
+
+        # Test switching bank in ErrorView
+        self.app.trf_view.error_view.bank_var.set("Y2")
+        self.app.trf_view.error_view._plot_heatmap()
+        self.app.update()
+
+        # 3rd load
+        self.app.trf_view.load_sample_data()
+        self.app.update()
+        self.assertIsNotNone(self.app.trf_view.analyzer)
+
+        # Check if clinical files are present and test loading them consecutively
+        clinical_dir = r"C:\Users\USNelRog\OneDrive - Elekta\Desktop\SDD+TRCC-NRT-600064+2+1+1+1+12568+1+EB+20260908+145318"
+        if os.path.isdir(clinical_dir):
+            from core.trf_reader import TRFReader
+            f1 = os.path.join(clinical_dir, "26_09_02 11_12_52 Z DailyQA3.trf")
+            f2 = os.path.join(clinical_dir, "26_09_03 10_41_38 Z DailyQA3.trf")
+            if os.path.isfile(f1) and os.path.isfile(f2):
+                ds1 = TRFReader.read_file(f1)
+                self.app.trf_view.load_dataset(ds1, source_name=f1)
+                self.app.update()
+                self.assertEqual(self.app.trf_view.lbl_file_info.cget("text"), f"Loaded: {f1}")
+
+                ds2 = TRFReader.read_file(f2)
+                self.app.trf_view.load_dataset(ds2, source_name=f2)
+                self.app.update()
+                self.assertEqual(self.app.trf_view.lbl_file_info.cget("text"), f"Loaded: {f2}")
+
+    def test_treatment_playback_linac_and_mlc_state_card(self):
+        """Verifies Linac State and MLC State readout card below the Total Dose graph."""
+        self.app.trf_view.load_sample_data()
+        self.app.update()
+
+        canvas = self.app.trf_view.mlc_canvas
+
+        # Check compatibility labels
+        self.assertIsNotNone(canvas.lbl_linac_state.cget("text"))
+        self.assertIsNotNone(canvas.lbl_mlc_state.cget("text"))
+
+        # Verify state_display items on canvas
+        state_items = canvas.canvas.find_withtag("state_display")
+        self.assertGreater(len(state_items), 4)
+
+        state_texts = [
+            canvas.canvas.itemcget(i, "text") for i in state_items
+            if canvas.canvas.type(i) == "text"
+        ]
+        self.assertIn("Linac State:", state_texts)
+        self.assertIn("MLC State:", state_texts)
+
+        # Verify dynamic MLC states across playback frames from synthetic dataset
+        # Frame 0: All leaves within 1.0 mm tolerance -> MLC OK (1)
+        canvas.set_frame(0)
+        self.assertEqual(canvas.lbl_mlc_state.cget("text"), "MLC OK (1)")
+
+        # Frame 70: Leaf 40 on Bank Y2 has positioning delay -> Leaves not Ready Y2 (7300)
+        canvas.set_frame(70)
+        self.assertEqual(canvas.lbl_mlc_state.cget("text"), "Leaves not Ready Y2 (7300)")
+
+        # Frame 160: Leaf 24 on Bank Y1 has positioning lag -> Leaves not Ready Y1 (7310)
+        canvas.set_frame(160)
+        self.assertEqual(canvas.lbl_mlc_state.cget("text"), "Leaves not Ready Y1 (7310)")
+
+        # Frame 190: Both banks repositioning during segment transition -> Leaves not Ready Y1 & Y2 (7300 & 7310)
+        canvas.set_frame(190)
+        self.assertEqual(canvas.lbl_mlc_state.cget("text"), "Leaves not Ready Y1 & Y2 (7300 & 7310)")
+
+        # Verify decoding and formatting with parenthesized codes
+        from core.mlc_codes import (
+            format_mlc_state, format_linac_state,
+            ELEKTA_MLC_CODES, ELEKTA_LINAC_CODES
+        )
+        self.assertEqual(format_mlc_state(1), "MLC OK (1)")
+        self.assertEqual(format_mlc_state(7000), "Prescription Not OK (7000)")
+        self.assertEqual(format_mlc_state(7001), "Not Calibrated (7001)")
+        self.assertEqual(format_mlc_state(7015), "Incorrect Sequence ID (7015)")
+        self.assertEqual(format_mlc_state(7300), "Leaves not Ready Y2 (7300)")
+        self.assertEqual(format_mlc_state(7310), "Leaves not Ready Y1 (7310)")
+        self.assertEqual(format_mlc_state(7460), "Diaphragm Position X2 (7460)")
+        self.assertEqual(format_mlc_state(7615), "All Voltage Rails (7615)")
+        self.assertEqual(format_mlc_state(8040), "Out of tolerance Y2 Leaves (8040)")
+        self.assertEqual(format_mlc_state(8101), "Loss Of Leaf Pair 1 (8101)")
+        self.assertEqual(format_mlc_state(8238), "Sensor update Fault Dia. X2 (8238)")
+        self.assertIn(7000, ELEKTA_MLC_CODES)
+        self.assertIn(8238, ELEKTA_MLC_CODES)
+
+        # Verify Linac state formatting with parenthesized codes
+        self.assertEqual(format_linac_state("Radiation On"), "Radiation On (42)")
+        self.assertEqual(format_linac_state("Move Only"), "Move Only (39)")
+        self.assertEqual(format_linac_state("Intersegment"), "Intersegment (41)")
+        self.assertEqual(format_linac_state("Terminated Ok"), "Terminated Ok (46)")
+        self.assertEqual(format_linac_state("Terminated Fault"), "Terminated Fault (47)")
+        self.assertEqual(format_linac_state("Terminated Checking"), "Terminated Checking (45)")
+        self.assertEqual(format_linac_state("Ready"), "Ready (0)")
+        self.assertEqual(format_linac_state(42), "Radiation On (42)")
+        self.assertEqual(format_linac_state(39), "Move Only (39)")
+        self.assertIn(42, ELEKTA_LINAC_CODES)
+
+        # Explicit redraw test with custom state values
+        canvas._draw_state_display("Radiation On", "MLC OK")
+        self.assertEqual(canvas.lbl_linac_state.cget("text"), "Radiation On (42)")
+        self.assertEqual(canvas.lbl_mlc_state.cget("text"), "MLC OK (1)")
+        texts_ok = [
+            canvas.canvas.itemcget(i, "text") for i in canvas.canvas.find_withtag("state_display")
+            if canvas.canvas.type(i) == "text"
+        ]
+        self.assertIn("Radiation On (42)", texts_ok)
+        self.assertIn("MLC OK (1)", texts_ok)
+
+        # Test Leaves not Ready Y2 state
+        canvas._draw_state_display("Move Only", "Leaves not Ready Y2")
+        self.assertEqual(canvas.lbl_linac_state.cget("text"), "Move Only (39)")
+        self.assertEqual(canvas.lbl_mlc_state.cget("text"), "Leaves not Ready Y2 (7300)")
+        texts_y2 = [
+            canvas.canvas.itemcget(i, "text") for i in canvas.canvas.find_withtag("state_display")
+            if canvas.canvas.type(i) == "text"
+        ]
+        self.assertIn("Move Only (39)", texts_y2)
+        self.assertIn("Leaves not Ready Y2 (7300)", texts_y2)
+
+        # Test Leaves not Ready Y1 & Y2 state
+        canvas._draw_state_display("Intersegment", "Leaves not Ready Y1 & Y2")
+        self.assertEqual(canvas.lbl_linac_state.cget("text"), "Intersegment (41)")
+        self.assertEqual(canvas.lbl_mlc_state.cget("text"), "Leaves not Ready Y1 & Y2 (7300 & 7310)")
+
+        # Test hardware fault state (e.g. Diaphragm Position X2 / Out of tolerance / Code 7015)
+        canvas._draw_state_display("Move Only", "Diaphragm Position X2")
+        self.assertEqual(canvas.lbl_mlc_state.cget("text"), "Diaphragm Position X2 (7460)")
+
+        canvas._draw_state_display("Terminated Fault", 7015)
+        self.assertEqual(canvas.lbl_linac_state.cget("text"), "Terminated Fault (47)")
+        self.assertEqual(canvas.lbl_mlc_state.cget("text"), "Incorrect Sequence ID (7015)")
+
+        # Test real clinical TRF file decoding if available
+        clinical_path = r"C:\Users\USNelRog\OneDrive - Elekta\Desktop\SDD+TRCC-NRT-600064+2+1+1+1+12568+1+EB+20260908+145318\26_09_03 12_07_07 Z 1_1.trf"
+        if os.path.isfile(clinical_path):
+            from core.trf_reader import TRFReader
+            from core.trf_analyzer import TRFAnalyzer
+            ds_clin = TRFReader.read_file(clinical_path)
+            analyzer_clin = TRFAnalyzer(ds_clin)
+            # Find frame where Mlc Status is 1 -> MLC OK (1)
+            s_col = ds_clin.dataframe[ds_clin.mlc_state_col]
+            idx_1 = (s_col == 1).idxmax()
+            row_idx_1 = ds_clin.dataframe.index.get_loc(idx_1)
+            ap_1 = analyzer_clin.get_aperture_at_index(row_idx_1)
+            self.assertEqual(ap_1["mlc_state"], "MLC OK (1)")
+            self.assertTrue("(" in ap_1["linac_state"] and ")" in ap_1["linac_state"])
+
+            # Find frame where Mlc Status is 7300 -> Leaves not Ready Y2 (7300)
+            if 7300 in s_col.values:
+                idx_7300 = (s_col == 7300).idxmax()
+                row_idx_7300 = ds_clin.dataframe.index.get_loc(idx_7300)
+                ap_7300 = analyzer_clin.get_aperture_at_index(row_idx_7300)
+                self.assertEqual(ap_7300["mlc_state"], "Leaves not Ready Y2 (7300)")
+
 
 if __name__ == "__main__":
     unittest.main()
