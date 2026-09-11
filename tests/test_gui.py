@@ -222,13 +222,108 @@ class TestGUI(unittest.TestCase):
         gantry_items_90 = canvas.canvas.find_withtag("gantry_display")
         self.assertGreater(len(gantry_items_90), 5)
 
+    def test_treatment_playback_control_point_display(self):
+        """Verifies Control Point text and horizontal bar graph on Treatment Playback canvas."""
+        self.app.trf_view.load_sample_data()
+        canvas = self.app.trf_view.mlc_canvas
+
+        # Initial frame (CP 1 / 50 in synthetic data)
+        self.assertEqual(canvas.lbl_control_point.cget("text"), "Control Point 1/50")
+        self.assertEqual(canvas.current_cp, 1)
+        self.assertEqual(canvas.total_cp, 50)
+
+        # Canvas items tagged with 'cp_display' must be present
+        cp_items = canvas.canvas.find_withtag("cp_display")
+        self.assertGreater(len(cp_items), 5)
+
+        # Check texts
+        cp_texts = [
+            canvas.canvas.itemcget(i, "text") for i in cp_items
+            if canvas.canvas.type(i) == "text"
+        ]
+        self.assertIn("Control Point:", cp_texts)
+        self.assertIn("1/50", cp_texts)
+        self.assertIn("CP 1", cp_texts)
+        self.assertIn("CP 50", cp_texts)
+
+        # Check progress bar fill rectangle
+        fill_rects = [
+            i for i in cp_items
+            if canvas.canvas.type(i) == "rectangle" and canvas.canvas.itemcget(i, "fill") == "#0284c7"
+        ]
+        self.assertEqual(len(fill_rects), 1)
+
+        # Explicit test with custom CP
+        canvas._draw_control_point(25, 50)
+        self.assertEqual(canvas.lbl_control_point.cget("text"), "Control Point 25/50")
+        cp_items_25 = canvas.canvas.find_withtag("cp_display")
+        cp_texts_25 = [
+            canvas.canvas.itemcget(i, "text") for i in cp_items_25
+            if canvas.canvas.type(i) == "text"
+        ]
+        self.assertIn("25/50", cp_texts_25)
+        self.assertIn("50%", cp_texts_25)
+
     def test_delivered_mu_card_display(self):
         """Verifies that the Delivered MU card above the Treatment Playback window displays correct MU value."""
         self.app.trf_view.load_sample_data()
         card_text = self.app.trf_view.card_mu.value_label.cget("text")
         self.assertEqual(card_text, "250.0 MU")
 
+    def test_treatment_playback_cp_and_total_dose_cards(self):
+        """Verifies Control Point Dose and Treatment Total Dose cards with horizontal progress bars."""
+        self.app.trf_view.load_sample_data()
+        canvas = self.app.trf_view.mlc_canvas
+
+        # CP Dose initial state
+        self.assertTrue(canvas.lbl_cp_dose.cget("text").startswith("CP Dose:"))
+        cp_dose_items = canvas.canvas.find_withtag("cp_dose_display")
+        self.assertGreater(len(cp_dose_items), 5)
+
+        cp_dose_texts = [
+            canvas.canvas.itemcget(i, "text") for i in cp_dose_items
+            if canvas.canvas.type(i) == "text"
+        ]
+        self.assertIn("CP Dose:", cp_dose_texts)
+        self.assertIn("0.0 MU", cp_dose_texts)
+
+        # Total Dose initial state
+        self.assertTrue(canvas.lbl_total_dose.cget("text").startswith("Total Dose:"))
+        tot_dose_items = canvas.canvas.find_withtag("total_dose_display")
+        self.assertGreater(len(tot_dose_items), 5)
+
+        tot_dose_texts = [
+            canvas.canvas.itemcget(i, "text") for i in tot_dose_items
+            if canvas.canvas.type(i) == "text"
+        ]
+        self.assertIn("Total Dose:", tot_dose_texts)
+        self.assertIn("0.0 MU", tot_dose_texts)
+        self.assertIn("250.0 MU", tot_dose_texts)
+
+        # Explicit test with custom dose values
+        canvas._draw_cp_dose(3.5, 5.0)
+        self.assertEqual(canvas.lbl_cp_dose.cget("text"), "CP Dose: 3.5 / 5.0 MU")
+        cp_items_custom = canvas.canvas.find_withtag("cp_dose_display")
+        cp_texts_custom = [
+            canvas.canvas.itemcget(i, "text") for i in cp_items_custom
+            if canvas.canvas.type(i) == "text"
+        ]
+        self.assertIn("3.5 / 5.0 MU", cp_texts_custom)
+        self.assertIn("70%", cp_texts_custom)
+
+        canvas._draw_total_dose(125.0, 250.0)
+        self.assertEqual(canvas.lbl_total_dose.cget("text"), "Total Dose: 125.0 / 250.0 MU")
+        tot_items_custom = canvas.canvas.find_withtag("total_dose_display")
+        tot_texts_custom = [
+            canvas.canvas.itemcget(i, "text") for i in tot_items_custom
+            if canvas.canvas.type(i) == "text"
+        ]
+        self.assertIn("125.0 / 250.0 MU", tot_texts_custom)
+        self.assertIn("50%", tot_texts_custom)
+
 
 if __name__ == "__main__":
     unittest.main()
+
+
 

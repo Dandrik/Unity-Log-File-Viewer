@@ -55,6 +55,12 @@ class MLCCanvas(ttk.Frame):
         self.current_gating: bool = False
         self.current_gantry_angle: float = 0.0
         self.current_gantry_error: float = 0.0
+        self.current_cp: int = 1
+        self.total_cp: int = 1
+        self.current_cp_dose: float = 0.0
+        self.current_cp_target_dose: float = 0.0
+        self.current_total_dose: float = 0.0
+        self.current_total_target_dose: float = 0.0
 
         # Display parameters (mm to pixels)
         self.canvas_width = 540
@@ -127,6 +133,9 @@ class MLCCanvas(ttk.Frame):
         self.lbl_dose_rate = ttk.Label(self, text="--")
         self.lbl_gating = ttk.Label(self, text="DISABLED")
         self.lbl_gantry_angle = ttk.Label(self, text="0.0°")
+        self.lbl_control_point = ttk.Label(self, text="Control Point 1/1")
+        self.lbl_cp_dose = ttk.Label(self, text="CP Dose: 0.0 / 0.0 MU")
+        self.lbl_total_dose = ttk.Label(self, text="Total Dose: 0.0 / 0.0 MU")
 
         # Scrubber bar pinned to the bottom (always visible)
         self.ctrl_frame = ttk.Frame(self, style="Card.TFrame", padding=(8, 6))
@@ -292,6 +301,19 @@ class MLCCanvas(ttk.Frame):
         self.current_gantry_error = float(data.get("gantry_error", 0.0))
         self.lbl_gantry_angle.config(text=f"{self.current_gantry_angle:.1f}°")
 
+        # Update Current Control Point
+        self.current_cp = int(data.get("current_cp", 1))
+        self.total_cp = int(data.get("total_cp", 1))
+        self.lbl_control_point.config(text=f"Control Point {self.current_cp}/{self.total_cp}")
+
+        # Update CP Dose & Treatment Total Dose
+        self.current_cp_dose = float(data.get("cp_dose", 0.0))
+        self.current_cp_target_dose = float(data.get("cp_target_dose", 0.0))
+        self.current_total_dose = float(data.get("total_dose", data.get("mu", 0.0)))
+        self.current_total_target_dose = float(data.get("total_target_dose", 0.0))
+        self.lbl_cp_dose.config(text=f"CP Dose: {self.current_cp_dose:.1f} / {self.current_cp_target_dose:.1f} MU")
+        self.lbl_total_dose.config(text=f"Total Dose: {self.current_total_dose:.1f} / {self.current_total_target_dose:.1f} MU")
+
     def _draw_axes(self) -> None:
         """Draws isocenter crosshairs, 50mm grid ticks, and the 57.4 x 22.0 cm field frame."""
         self.canvas.delete("all")
@@ -353,10 +375,13 @@ class MLCCanvas(ttk.Frame):
             # Field dimension label
             self.canvas.create_text(self.cx, fy1 - 12, text="Max Field: 57.4 × 22.0 cm (Elekta Unity)", fill="#64748b", font=FONT_BEV_CANVAS_SMALL, anchor="s", tags="grid")
 
-        # Always draw treatment timestamps, dose rate bar, and gantry indicator on the blue background to the right of the MLC display
+        # Always draw telemetry cards on the blue background
         self._draw_datetimes()
         self._draw_doserate(self.current_dose_rate, self.current_gating)
         self._draw_gantry(self.current_gantry_angle, self.current_gantry_error)
+        self._draw_control_point(self.current_cp, self.total_cp)
+        self._draw_cp_dose(self.current_cp_dose, self.current_cp_target_dose)
+        self._draw_total_dose(self.current_total_dose, self.current_total_target_dose)
 
     def _on_y2_orientation_changed(self, event=None) -> None:
         """Handles change in Y2 bank orientation (Right, Left, Top, Bottom)."""
@@ -541,10 +566,13 @@ class MLCCanvas(ttk.Frame):
                 self.canvas.create_text(self.cx, top_wall_px + 20, text="▲ Bank Y1", fill="#60a5fa", font=FONT_BEV_CANVAS_LARGE, anchor="center", tags="jaw")
                 self.canvas.create_text(self.cx, bot_wall_px - 20, text="Bank Y2 ▼", fill="#22d3ee", font=FONT_BEV_CANVAS_LARGE, anchor="center", tags="jaw")
 
-        # Always draw treatment timestamps, dose rate bar, and gantry indicator on the blue background to the right of the MLC display
+        # Always draw telemetry cards on the blue background
         self._draw_datetimes()
         self._draw_doserate(self.current_dose_rate, self.current_gating)
         self._draw_gantry(self.current_gantry_angle, self.current_gantry_error)
+        self._draw_control_point(self.current_cp, self.total_cp)
+        self._draw_cp_dose(self.current_cp_dose, self.current_cp_target_dose)
+        self._draw_total_dose(self.current_total_dose, self.current_total_target_dose)
 
     def _draw_datetimes(self) -> None:
         """Draws treatment timestamps to the right of the MLC display on top of the blue canvas background."""
@@ -563,17 +591,17 @@ class MLCCanvas(ttk.Frame):
             x_label = max(10.0, w - 270.0)
 
         x_val = x_label + 95.0
-        y_base = 20.0
+        y_base = 8.0
 
         # Subtle translucent / dark navy card on the blue background
         box_pad = 12.0
         box_w = 270.0
-        box_h = 84.0
+        box_h = 66.0
         self.canvas.create_rectangle(
             x_label - box_pad,
-            y_base - 8.0,
+            y_base,
             x_label - box_pad + box_w,
-            y_base - 8.0 + box_h,
+            y_base + box_h,
             fill="#131d35",
             outline="#334155",
             width=1,
@@ -591,7 +619,7 @@ class MLCCanvas(ttk.Frame):
 
         # Row 1: Treatment Start Date & Time
         self.canvas.create_text(
-            x_label, y_base + 8.0,
+            x_label, y_base + 11.0,
             text="Tx Start:",
             fill="#94a3b8",
             font=FONT_BEV_DT_LABEL_BOLD,
@@ -599,7 +627,7 @@ class MLCCanvas(ttk.Frame):
             tags="datetime"
         )
         self.canvas.create_text(
-            x_val, y_base + 8.0,
+            x_val, y_base + 11.0,
             text=start_str,
             fill="#f8fafc",
             font=FONT_BEV_DT_VAL,
@@ -609,7 +637,7 @@ class MLCCanvas(ttk.Frame):
 
         # Row 2: Current Control Point Date & Time (Highlighted in cyan/sky blue)
         self.canvas.create_text(
-            x_label, y_base + 34.0,
+            x_label, y_base + 33.0,
             text="Current CP:",
             fill="#38bdf8",
             font=FONT_BEV_DT_LABEL_BOLD,
@@ -617,7 +645,7 @@ class MLCCanvas(ttk.Frame):
             tags="datetime"
         )
         self.canvas.create_text(
-            x_val, y_base + 34.0,
+            x_val, y_base + 33.0,
             text=current_str,
             fill="#38bdf8",
             font=FONT_BEV_DT_VAL_BOLD,
@@ -627,7 +655,7 @@ class MLCCanvas(ttk.Frame):
 
         # Row 3: Treatment End Date & Time
         self.canvas.create_text(
-            x_label, y_base + 60.0,
+            x_label, y_base + 55.0,
             text="Tx End:",
             fill="#94a3b8",
             font=FONT_BEV_DT_LABEL_BOLD,
@@ -635,7 +663,7 @@ class MLCCanvas(ttk.Frame):
             tags="datetime"
         )
         self.canvas.create_text(
-            x_val, y_base + 60.0,
+            x_val, y_base + 55.0,
             text=end_str,
             fill="#f8fafc",
             font=FONT_BEV_DT_VAL,
@@ -668,8 +696,8 @@ class MLCCanvas(ttk.Frame):
         box_w = 270.0
         box_x1 = x_label - box_pad
         box_x2 = box_x1 + box_w
-        box_y1 = 104.0
-        box_h = 190.0
+        box_y1 = 80.0
+        box_h = 118.0
         box_y2 = box_y1 + box_h
 
         # Translucent dark card
@@ -688,7 +716,7 @@ class MLCCanvas(ttk.Frame):
 
         # Row 1: Dose Rate header readout
         self.canvas.create_text(
-            box_x1 + 14.0, box_y1 + 16.0,
+            box_x1 + 14.0, box_y1 + 14.0,
             text="Dose Rate:",
             fill="#94a3b8",
             font=FONT_BEV_DT_LABEL_BOLD,
@@ -697,7 +725,7 @@ class MLCCanvas(ttk.Frame):
         )
         rate_color = "#fbbf24" if dose_rate > 0.1 else "#64748b"
         self.canvas.create_text(
-            box_x1 + 104.0, box_y1 + 16.0,
+            box_x1 + 100.0, box_y1 + 14.0,
             text=rate_str,
             fill=rate_color,
             font=FONT_BEV_DT_VAL_BOLD,
@@ -706,11 +734,11 @@ class MLCCanvas(ttk.Frame):
         )
 
         # Vertical bar graph: 0 MU/min (bottom) to 500 MU/min (top)
-        bar_x1 = box_x1 + 24.0
-        bar_w = 22.0
+        bar_x1 = box_x1 + 22.0
+        bar_w = 20.0
         bar_x2 = bar_x1 + bar_w
-        bar_top_y = box_y1 + 40.0
-        bar_bot_y = box_y1 + 170.0
+        bar_top_y = box_y1 + 28.0
+        bar_bot_y = box_y1 + 108.0
         bar_h = bar_bot_y - bar_top_y
 
         # Meter background trough
@@ -785,8 +813,8 @@ class MLCCanvas(ttk.Frame):
         # Turns bright red (#dc2626) when gating is enabled
         gate_x1 = box_x1 + 148.0
         gate_x2 = box_x1 + 254.0
-        gate_y1 = box_y1 + 65.0
-        gate_y2 = box_y1 + 145.0
+        gate_y1 = box_y1 + 32.0
+        gate_y2 = box_y1 + 104.0
 
         if is_gating:
             gate_fill = "#dc2626"
@@ -813,7 +841,7 @@ class MLCCanvas(ttk.Frame):
 
         gx_center = (gate_x1 + gate_x2) / 2.0
         self.canvas.create_text(
-            gx_center, gate_y1 + 26.0,
+            gx_center, gate_y1 + 24.0,
             text="Gating",
             fill=gate_text_color,
             font=FONT_BEV_GATE_LABEL,
@@ -821,7 +849,7 @@ class MLCCanvas(ttk.Frame):
             tags="doserate"
         )
         self.canvas.create_text(
-            gx_center, gate_y1 + 52.0,
+            gx_center, gate_y1 + 48.0,
             text=gate_status_text,
             fill=gate_status_color,
             font=FONT_BEV_GATE_STATUS,
@@ -859,8 +887,8 @@ class MLCCanvas(ttk.Frame):
         box_w = 270.0
         box_x1 = x_label - box_pad
         box_x2 = box_x1 + box_w
-        box_y1 = 306.0
-        box_h = 175.0
+        box_y1 = 204.0
+        box_h = 118.0
         box_y2 = box_y1 + box_h
 
         # Translucent dark card
@@ -878,7 +906,7 @@ class MLCCanvas(ttk.Frame):
 
         # Row 1: Gantry Angle header readout
         self.canvas.create_text(
-            box_x1 + 14.0, box_y1 + 16.0,
+            box_x1 + 14.0, box_y1 + 14.0,
             text="Gantry Angle:",
             fill="#94a3b8",
             font=FONT_BEV_DT_LABEL_BOLD,
@@ -888,7 +916,7 @@ class MLCCanvas(ttk.Frame):
 
         err_str = f" ({error:+.2f}°)" if abs(error) > 0.01 else ""
         self.canvas.create_text(
-            box_x1 + 112.0, box_y1 + 16.0,
+            box_x1 + 112.0, box_y1 + 14.0,
             text=f"{ang_str}{err_str}",
             fill="#38bdf8",
             font=FONT_BEV_DT_VAL_BOLD,
@@ -898,8 +926,8 @@ class MLCCanvas(ttk.Frame):
 
         # Black circle (pure black fill as requested)
         gcx = box_x1 + (box_w / 2.0)
-        gcy = box_y1 + 100.0
-        R = 46.0
+        gcy = box_y1 + 68.0
+        R = 33.0
 
         self.canvas.create_oval(
             gcx - R, gcy - R, gcx + R, gcy + R,
@@ -911,15 +939,15 @@ class MLCCanvas(ttk.Frame):
 
         # Cardinal ticks & labels (IEC 61217: 0° Top, 90° Right, 180° Bottom, 270° Left)
         cardinals = [
-            (0,   "0°",   0,      -R - 7, "s"),
-            (90,  "90°",  R + 7,  0,      "w"),
-            (180, "180°", 0,      R + 7,  "n"),
-            (270, "270°", -R - 7, 0,      "e"),
+            (0,   "0°",   0,      -R - 6, "s"),
+            (90,  "90°",  R + 6,  0,      "w"),
+            (180, "180°", 0,      R + 6,  "n"),
+            (270, "270°", -R - 6, 0,      "e"),
         ]
         for c_ang, c_lbl, lx_off, ly_off, anc in cardinals:
             rad_c = math.radians(c_ang)
-            tx1 = gcx + (R - 4.0) * math.sin(rad_c)
-            ty1 = gcy - (R - 4.0) * math.cos(rad_c)
+            tx1 = gcx + (R - 3.0) * math.sin(rad_c)
+            ty1 = gcy - (R - 3.0) * math.cos(rad_c)
             tx2 = gcx + R * math.sin(rad_c)
             ty2 = gcy - R * math.cos(rad_c)
             self.canvas.create_line(tx1, ty1, tx2, ty2, fill="#64748b", width=1, tags="gantry_display")
@@ -933,8 +961,8 @@ class MLCCanvas(ttk.Frame):
             )
 
         # Subtle center isocenter crosshair
-        self.canvas.create_line(gcx - 5, gcy, gcx + 5, gcy, fill="#334155", width=1, tags="gantry_display")
-        self.canvas.create_line(gcx, gcy - 5, gcx, gcy + 5, fill="#334155", width=1, tags="gantry_display")
+        self.canvas.create_line(gcx - 4, gcy, gcx + 4, gcy, fill="#334155", width=1, tags="gantry_display")
+        self.canvas.create_line(gcx, gcy - 4, gcx, gcy + 4, fill="#334155", width=1, tags="gantry_display")
         self.canvas.create_oval(gcx - 2, gcy - 2, gcx + 2, gcy + 2, fill="#475569", outline="", tags="gantry_display")
 
         # Red arrow pointing in from the black circle towards the center in the direction the gantry is at
@@ -942,7 +970,7 @@ class MLCCanvas(ttk.Frame):
         sx = gcx + (R - 2.0) * math.sin(rad)
         sy = gcy - (R - 2.0) * math.cos(rad)
 
-        r_end = 10.0
+        r_end = 8.0
         ex = gcx + r_end * math.sin(rad)
         ey = gcy - r_end * math.cos(rad)
 
@@ -950,19 +978,395 @@ class MLCCanvas(ttk.Frame):
         self.canvas.create_line(
             sx, sy, ex, ey,
             fill="#ef4444",
-            width=3,
+            width=2.5,
             arrow="last",
-            arrowshape=(12, 14, 5),
+            arrowshape=(10, 12, 4),
             tags="gantry_display"
         )
 
         # Radiation source dot at perimeter
         self.canvas.create_oval(
-            sx - 4, sy - 4, sx + 4, sy + 4,
+            sx - 3, sy - 3, sx + 3, sy + 3,
             fill="#ef4444",
             outline="#fca5a5",
             width=1,
             tags="gantry_display"
+        )
+
+    def _draw_control_point(self, current_cp: Optional[int] = None, total_cp: Optional[int] = None) -> None:
+        """Draws current control point readout (e.g. Control Point 1/50) and a horizontal progress bar below the gantry display."""
+        self.canvas.delete("cp_display")
+
+        if current_cp is not None:
+            self.current_cp = current_cp
+        else:
+            current_cp = self.current_cp
+
+        if total_cp is not None:
+            self.total_cp = total_cp
+        else:
+            total_cp = self.total_cp
+
+        w = self.canvas_width
+        if self.y2_orientation in ("Right", "Left"):
+            mlc_right_px = self.cx + (UNITY_PARK_WALL_MM * self.scale)
+        else:
+            mlc_right_px = self.cx + (UNITY_STACK_LIMIT_MM * self.scale)
+
+        # Position to the right of the MLC display on top of the blue background
+        if w >= 800:
+            x_label = max(mlc_right_px + 28.0, w - 275.0)
+        else:
+            x_label = max(10.0, w - 270.0)
+
+        box_pad = 12.0
+        box_w = 270.0
+        box_x1 = x_label - box_pad
+        box_x2 = box_x1 + box_w
+        box_y1 = 328.0
+        box_h = 56.0
+        box_y2 = box_y1 + box_h
+
+        # Translucent dark card
+        self.canvas.create_rectangle(
+            box_x1, box_y1, box_x2, box_y2,
+            fill="#131d35",
+            outline="#334155",
+            width=1,
+            tags="cp_display"
+        )
+
+        # Update compatibility label
+        self.lbl_control_point.config(text=f"Control Point {current_cp}/{total_cp}")
+
+        # Row 1: Header readout
+        self.canvas.create_text(
+            box_x1 + 14.0, box_y1 + 14.0,
+            text="Control Point:",
+            fill="#94a3b8",
+            font=FONT_BEV_DT_LABEL_BOLD,
+            anchor="w",
+            tags="cp_display"
+        )
+        self.canvas.create_text(
+            box_x1 + 116.0, box_y1 + 14.0,
+            text=f"{current_cp}/{total_cp}",
+            fill="#38bdf8",
+            font=FONT_BEV_DT_VAL_BOLD,
+            anchor="w",
+            tags="cp_display"
+        )
+
+        pct = (current_cp / max(1, total_cp)) * 100.0
+        self.canvas.create_text(
+            box_x2 - 14.0, box_y1 + 14.0,
+            text=f"{pct:.0f}%",
+            fill="#64748b",
+            font=FONT_BEV_DT_VAL,
+            anchor="e",
+            tags="cp_display"
+        )
+
+        # Row 2: Horizontal progress bar graph
+        bar_x1 = box_x1 + 14.0
+        bar_x2 = box_x2 - 14.0
+        bar_w = bar_x2 - bar_x1
+        bar_y1 = box_y1 + 27.0
+        bar_y2 = box_y1 + 38.0
+
+        # Bar background trough
+        self.canvas.create_rectangle(
+            bar_x1, bar_y1, bar_x2, bar_y2,
+            fill="#0b1120",
+            outline="#334155",
+            width=1,
+            tags="cp_display"
+        )
+
+        # Bar progress fill
+        frac = max(0.0, min(1.0, current_cp / max(1, total_cp)))
+        if frac > 0.0:
+            fill_x2 = bar_x1 + (frac * bar_w)
+            self.canvas.create_rectangle(
+                bar_x1 + 1, bar_y1 + 1, fill_x2, bar_y2 - 1,
+                fill="#0284c7",
+                outline="",
+                tags="cp_display"
+            )
+            # Bright cyan/sky blue leading edge line
+            self.canvas.create_line(
+                fill_x2, bar_y1 + 1, fill_x2, bar_y2 - 1,
+                fill="#38bdf8",
+                width=2,
+                tags="cp_display"
+            )
+
+        # Sub-labels: CP 1 on left, CP {total_cp} on right
+        self.canvas.create_text(
+            bar_x1, box_y1 + 47.0,
+            text="CP 1",
+            fill="#64748b",
+            font=("Segoe UI", 9),
+            anchor="w",
+            tags="cp_display"
+        )
+        self.canvas.create_text(
+            bar_x2, box_y1 + 47.0,
+            text=f"CP {total_cp}",
+            fill="#64748b",
+            font=("Segoe UI", 9),
+            anchor="e",
+            tags="cp_display"
+        )
+
+    def _draw_cp_dose(self, cp_dose: Optional[float] = None, cp_target: Optional[float] = None) -> None:
+        """Draws delivered dose for the current control point with a horizontal progress bar."""
+        self.canvas.delete("cp_dose_display")
+
+        if cp_dose is not None:
+            self.current_cp_dose = cp_dose
+        else:
+            cp_dose = self.current_cp_dose
+
+        if cp_target is not None:
+            self.current_cp_target_dose = cp_target
+        else:
+            cp_target = self.current_cp_target_dose
+
+        w = self.canvas_width
+        if self.y2_orientation in ("Right", "Left"):
+            mlc_right_px = self.cx + (UNITY_PARK_WALL_MM * self.scale)
+        else:
+            mlc_right_px = self.cx + (UNITY_STACK_LIMIT_MM * self.scale)
+
+        if w >= 800:
+            x_label = max(mlc_right_px + 28.0, w - 275.0)
+        else:
+            x_label = max(10.0, w - 270.0)
+
+        box_pad = 12.0
+        box_w = 270.0
+        box_x1 = x_label - box_pad
+        box_x2 = box_x1 + box_w
+        box_y1 = 390.0
+        box_h = 56.0
+        box_y2 = box_y1 + box_h
+
+        # Translucent dark card
+        self.canvas.create_rectangle(
+            box_x1, box_y1, box_x2, box_y2,
+            fill="#131d35",
+            outline="#334155",
+            width=1,
+            tags="cp_dose_display"
+        )
+
+        # Update compatibility label
+        self.lbl_cp_dose.config(text=f"CP Dose: {cp_dose:.1f} / {cp_target:.1f} MU")
+
+        # Row 1: Header readout
+        self.canvas.create_text(
+            box_x1 + 14.0, box_y1 + 14.0,
+            text="CP Dose:",
+            fill="#94a3b8",
+            font=FONT_BEV_DT_LABEL_BOLD,
+            anchor="w",
+            tags="cp_dose_display"
+        )
+        self.canvas.create_text(
+            box_x1 + 86.0, box_y1 + 14.0,
+            text=f"{cp_dose:.1f} / {cp_target:.1f} MU",
+            fill="#38bdf8",
+            font=FONT_BEV_DT_VAL_BOLD,
+            anchor="w",
+            tags="cp_dose_display"
+        )
+
+        pct_str = f"{(cp_dose / cp_target) * 100.0:.0f}%" if cp_target > 0.001 else ("100%" if cp_dose > 0 else "0%")
+        self.canvas.create_text(
+            box_x2 - 14.0, box_y1 + 14.0,
+            text=pct_str,
+            fill="#64748b",
+            font=FONT_BEV_DT_VAL,
+            anchor="e",
+            tags="cp_dose_display"
+        )
+
+        # Row 2: Horizontal progress bar graph
+        bar_x1 = box_x1 + 14.0
+        bar_x2 = box_x2 - 14.0
+        bar_w = bar_x2 - bar_x1
+        bar_y1 = box_y1 + 27.0
+        bar_y2 = box_y1 + 38.0
+
+        # Bar background trough
+        self.canvas.create_rectangle(
+            bar_x1, bar_y1, bar_x2, bar_y2,
+            fill="#0b1120",
+            outline="#334155",
+            width=1,
+            tags="cp_dose_display"
+        )
+
+        # Bar progress fill (amber radiation beam theme)
+        frac = max(0.0, min(1.0, cp_dose / cp_target)) if cp_target > 0.001 else (1.0 if cp_dose > 0 else 0.0)
+        if frac > 0.0:
+            fill_x2 = bar_x1 + (frac * bar_w)
+            self.canvas.create_rectangle(
+                bar_x1 + 1, bar_y1 + 1, fill_x2, bar_y2 - 1,
+                fill="#d97706",
+                outline="",
+                tags="cp_dose_display"
+            )
+            # Bright yellow/gold leading edge cap line
+            self.canvas.create_line(
+                fill_x2, bar_y1 + 1, fill_x2, bar_y2 - 1,
+                fill="#fbbf24",
+                width=2,
+                tags="cp_dose_display"
+            )
+
+        # Sub-labels: 0.0 MU on left, {cp_target:.1f} MU on right
+        self.canvas.create_text(
+            bar_x1, box_y1 + 47.0,
+            text="0.0 MU",
+            fill="#64748b",
+            font=("Segoe UI", 9),
+            anchor="w",
+            tags="cp_dose_display"
+        )
+        self.canvas.create_text(
+            bar_x2, box_y1 + 47.0,
+            text=f"{cp_target:.1f} MU",
+            fill="#64748b",
+            font=("Segoe UI", 9),
+            anchor="e",
+            tags="cp_dose_display"
+        )
+
+    def _draw_total_dose(self, total_dose: Optional[float] = None, total_target: Optional[float] = None) -> None:
+        """Draws total treatment delivered dose with a horizontal progress bar."""
+        self.canvas.delete("total_dose_display")
+
+        if total_dose is not None:
+            self.current_total_dose = total_dose
+        else:
+            total_dose = self.current_total_dose
+
+        if total_target is not None:
+            self.current_total_target_dose = total_target
+        else:
+            total_target = self.current_total_target_dose
+
+        w = self.canvas_width
+        if self.y2_orientation in ("Right", "Left"):
+            mlc_right_px = self.cx + (UNITY_PARK_WALL_MM * self.scale)
+        else:
+            mlc_right_px = self.cx + (UNITY_STACK_LIMIT_MM * self.scale)
+
+        if w >= 800:
+            x_label = max(mlc_right_px + 28.0, w - 275.0)
+        else:
+            x_label = max(10.0, w - 270.0)
+
+        box_pad = 12.0
+        box_w = 270.0
+        box_x1 = x_label - box_pad
+        box_x2 = box_x1 + box_w
+        box_y1 = 452.0
+        box_h = 56.0
+        box_y2 = box_y1 + box_h
+
+        # Translucent dark card
+        self.canvas.create_rectangle(
+            box_x1, box_y1, box_x2, box_y2,
+            fill="#131d35",
+            outline="#334155",
+            width=1,
+            tags="total_dose_display"
+        )
+
+        # Update compatibility label
+        self.lbl_total_dose.config(text=f"Total Dose: {total_dose:.1f} / {total_target:.1f} MU")
+
+        # Row 1: Header readout
+        self.canvas.create_text(
+            box_x1 + 14.0, box_y1 + 14.0,
+            text="Total Dose:",
+            fill="#94a3b8",
+            font=FONT_BEV_DT_LABEL_BOLD,
+            anchor="w",
+            tags="total_dose_display"
+        )
+        self.canvas.create_text(
+            box_x1 + 98.0, box_y1 + 14.0,
+            text=f"{total_dose:.1f} / {total_target:.1f} MU",
+            fill="#38bdf8",
+            font=FONT_BEV_DT_VAL_BOLD,
+            anchor="w",
+            tags="total_dose_display"
+        )
+
+        pct_str = f"{(total_dose / total_target) * 100.0:.0f}%" if total_target > 0.001 else ("100%" if total_dose > 0 else "0%")
+        self.canvas.create_text(
+            box_x2 - 14.0, box_y1 + 14.0,
+            text=pct_str,
+            fill="#64748b",
+            font=FONT_BEV_DT_VAL,
+            anchor="e",
+            tags="total_dose_display"
+        )
+
+        # Row 2: Horizontal progress bar graph
+        bar_x1 = box_x1 + 14.0
+        bar_x2 = box_x2 - 14.0
+        bar_w = bar_x2 - bar_x1
+        bar_y1 = box_y1 + 27.0
+        bar_y2 = box_y1 + 38.0
+
+        # Bar background trough
+        self.canvas.create_rectangle(
+            bar_x1, bar_y1, bar_x2, bar_y2,
+            fill="#0b1120",
+            outline="#334155",
+            width=1,
+            tags="total_dose_display"
+        )
+
+        # Bar progress fill (emerald treatment completion theme)
+        frac = max(0.0, min(1.0, total_dose / total_target)) if total_target > 0.001 else (1.0 if total_dose > 0 else 0.0)
+        if frac > 0.0:
+            fill_x2 = bar_x1 + (frac * bar_w)
+            self.canvas.create_rectangle(
+                bar_x1 + 1, bar_y1 + 1, fill_x2, bar_y2 - 1,
+                fill="#059669",
+                outline="",
+                tags="total_dose_display"
+            )
+            # Bright emerald cap line
+            self.canvas.create_line(
+                fill_x2, bar_y1 + 1, fill_x2, bar_y2 - 1,
+                fill="#34d399",
+                width=2,
+                tags="total_dose_display"
+            )
+
+        # Sub-labels: 0.0 MU on left, {total_target:.1f} MU on right
+        self.canvas.create_text(
+            bar_x1, box_y1 + 47.0,
+            text="0.0 MU",
+            fill="#64748b",
+            font=("Segoe UI", 9),
+            anchor="w",
+            tags="total_dose_display"
+        )
+        self.canvas.create_text(
+            bar_x2, box_y1 + 47.0,
+            text=f"{total_target:.1f} MU",
+            fill="#64748b",
+            font=("Segoe UI", 9),
+            anchor="e",
+            tags="total_dose_display"
         )
 
     def _on_mouse_hover(self, event: tk.Event) -> None:

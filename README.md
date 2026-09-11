@@ -37,6 +37,22 @@ A Python desktop GUI application built for the **Elekta Unity MR-Linac system** 
   * Live numeric readout (`Gantry Angle: <val>°`) with instantaneous positional error tracking (`±<err>°`).
   * Pure black circle (`#000000`) representing the gantry ring with cardinal ticks and labels (`0°`, `90°`, `180°`, `270°`) following IEC 61217 coordinates (0° overhead, clockwise).
   * Central isocenter crosshairs (`+`) and a prominent red arrow (`#ef4444`) pointing **in** from the black circle perimeter towards the center in the direction the gantry is positioned, clearly depicting the radiation beam entry direction.
+* **Real-Time Control Point & Horizontal Progress Bar**:
+  * Positioned directly below the gantry display card on the deep blue canvas background.
+  * Live numeric readout (`Control Point: <current>/<total>`) with real-time completion percentage badge (e.g. `Control Point: 1/50` | `10%`).
+  * Calibrated horizontal progress bar illustrating delivery progression ($CP / CP_{total}$) with dark recessed trough (`#0b1120`), vivid cyan progress fill (`#0284c7`), and bright leading cap line (`#38bdf8`).
+  * Sub-labels indicating initial and final control points (`CP 1` and `CP <total>`) beneath the bar.
+  * Automatically parses TRF control point channels (e.g. `Control point/Actual Value (None)`) and updates dynamically with timeline scrubbing and playback animation.
+* **Control Point Delivered Dose & Progress Bar**:
+  * Positioned directly below the control point card on the deep blue canvas background.
+  * Live numeric readout (`CP Dose: <delivered> / <target> MU`) with instantaneous control point completion percentage (e.g. `CP Dose: 4.6 / 5.0 MU` | `92%`).
+  * Horizontal progress bar displaying step dose delivery with radiation amber fill (`#d97706`), bright gold cap line (`#fbbf24`), and dark trough (`#0b1120`).
+  * Sub-labels indicating `0.0 MU` and target step dose (e.g. `5.0 MU` or `8.8 MU`) underneath the bar.
+* **Treatment Total Delivered Dose & Progress Bar**:
+  * Positioned directly below the control point dose card on the deep blue canvas background.
+  * Live numeric readout (`Total Dose: <cumulative> / <total> MU`) with overall treatment completion percentage (e.g. `Total Dose: 25.0 / 250.0 MU` | `10%`).
+  * Horizontal progress bar illustrating overall field delivery with emerald green fill (`#059669`), bright mint cap line (`#34d399`), and dark trough (`#0b1120`).
+  * Sub-labels indicating `0.0 MU` and total planned dose (e.g. `250.0 MU` or `761.4 MU`) underneath the bar.
 * **High-Visibility Scaled Typography**:
   * All canvas readouts, axis labels, and beam metric texts are scaled 1.5x larger for optimal viewing on clinical monitors.
 * **Delivered Monitor Unit (MU) Calibration & Real-Time Tracking**:

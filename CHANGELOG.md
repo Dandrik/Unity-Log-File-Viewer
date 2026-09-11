@@ -9,7 +9,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased] - 2026-09-11
 
-### Added
+- **Control Point Delivered Dose & Progress Bar**:
+  - Added real-time control point delivered dose readout (`CP Dose: <delivered> / <target> MU`) with percentage badge positioned directly below the control point card.
+  - Added horizontal bar graph illustrating current control point dose progress with amber radiation fill (`#d97706`), bright gold cap line (`#fbbf24`), dark trough (`#0b1120`), and sub-labels (`0.0 MU` and target step MU).
+- **Treatment Total Delivered Dose & Progress Bar**:
+  - Added real-time total treatment delivered dose readout (`Total Dose: <cumulative> / <total> MU`) with overall completion percentage badge positioned directly below the control point dose card.
+  - Added horizontal bar graph illustrating overall treatment dose delivery with emerald green fill (`#059669`), bright mint cap line (`#34d399`), dark trough (`#0b1120`), and sub-labels (`0.0 MU` and total planned MU).
+- **Control Point Readout & Horizontal Progress Bar**:
+  - Added real-time control point readout (`Control Point: <current>/<total>`) along with completion percentage badge (e.g. `Control Point: 1/50` | `10%`) positioned directly below the gantry display card.
+  - Added a calibrated horizontal progress bar showing fractional delivery progress ($CP / CP_{total}$) with dark recessed trough (`#0b1120`), vibrant cyan progress fill (`#0284c7`), and bright leading-edge cap line (`#38bdf8`).
+  - Added sub-labels indicating the starting control point (`CP 1`) and final control point (`CP <total>`) underneath the bar.
+  - Added automatic detection of TRF control point channels (e.g. `Control point/Actual Value (None)`) in `TRFReader` and passed per-frame values in `TRFAnalyzer.get_aperture_at_index`.
 - **Gantry Angle & Radiation Beam Direction Circle**:
   - Added real-time numeric Gantry Angle readout (`Gantry Angle: <val>°` with error tracking `(±<err>°)`) positioned directly below the dose rate and gating card.
   - Added pure black circular gantry indicator (`fill="#000000"`) below the readout with IEC 61217 cardinal markings (`0°` top, `90°` right, `180°` bottom, `270°` left) and central isocenter crosshairs (`+`).
@@ -42,6 +52,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Added `test_treatment_playback_doserate_display`: Validates dose rate extraction, readout formatting, and 0 vs 500 MU/min bar graph scaling.
   - Added `test_treatment_playback_gating_box`: Tests Gating box rendering, normal state (`#0b1120`, `DISABLED`), and active red alert state (`#dc2626`, `ENABLED`).
   - Added `test_treatment_playback_gantry_circle`: Verifies gantry angle label formatting, `gantry_display` canvas items, pure black circle (`#000000`), inward red arrow (`#ef4444`), and custom angle redraw.
+  - Added `test_treatment_playback_control_point_display`: Verifies control point text formatting (`Control Point 1/50`), progress bar fill, and custom CP redraw.
+  - Added `test_treatment_playback_cp_and_total_dose_cards`: Verifies Control Point delivered dose and treatment total delivered dose card rendering, labels, and horizontal bar fill.
   - Added `test_trf_header_mu_scaling`: Verifies that raw binary header MU (in 0.1 MU / dMU units) is divided by 10.0 to convert to true Monitor Units.
   - Added `test_cumulative_mu_and_total_mu`: Verifies total MU in summary stats and monotonic cumulative MU progression during scrubbing.
   - Added `test_delivered_mu_card_display`: Verifies that the Delivered MU KPI card above Treatment Playback correctly displays formatted MU.

@@ -102,6 +102,7 @@ class TRFReader:
         dose_mu = next((c for c in columns if "Step Dose" in c and "Actual" in c), None)
         dose_rate = next((c for c in columns if "Dose Rate" in c and "Actual" in c), None)
         gating = next((c for c in columns if any(k in c.lower() for k in ["gating", "gate", "beam hold", "beam_hold", "2546"])), None)
+        control_point = next((c for c in columns if "control point" in c.lower() or ("cp" in c.lower() and "actual" in c.lower())), None)
 
         return TRFDataset(
             header=header,
@@ -120,6 +121,7 @@ class TRFReader:
             dose_mu_col=dose_mu,
             dose_rate_col=dose_rate,
             gating_col=gating,
+            control_point_col=control_point,
         )
 
     @staticmethod
@@ -163,6 +165,11 @@ class TRFReader:
         dose_rates[340:370] = 0.0
         data["Actual Dose Rate/Actual Value (Mu/min)"] = dose_rates
         data["Gating/Actual Value (None)"] = gating_arr
+
+        # Control Points: 50 control points across delivery (Control Point 1 to 50)
+        num_cps = 50
+        cp_arr = np.clip(1 + ((np.arange(num_points) / max(1, num_points - 1)) * (num_cps - 1)).astype(int), 1, num_cps)
+        data["Control point/Actual Value (None)"] = cp_arr
 
         # 80 Leaf Pairs (Agility MLC)
         # Generate an aperture (e.g. shaped like a target tumor volume that shifts)

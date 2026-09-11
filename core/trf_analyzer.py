@@ -14,6 +14,12 @@ class TRFAnalyzer:
         self.dataset = dataset
         self.df = dataset.dataframe
         self.beam_only = beam_only
+        self.total_control_points: int = 1
+        if self.dataset.control_point_col and self.dataset.control_point_col in self.df:
+            try:
+                self.total_control_points = max(1, int(self.df[self.dataset.control_point_col].max()))
+            except Exception:
+                self.total_control_points = 1
         self._precompute_cumulative_mu()
         self.active_df = self._get_active_df()
         self.stats: Optional[DeliveryQAStats] = None
@@ -21,40 +27,89 @@ class TRFAnalyzer:
         self._analyze()
 
     def _precompute_cumulative_mu(self) -> None:
-        """Precomputes cumulative delivered MU across dataframe rows for scrubbing and stats."""
+        """Precomputes cumulative delivered MU and per-CP delivered dose across dataframe rows."""
         n = len(self.df)
         self.cumulative_mu = np.zeros(n)
+        self.cp_dose_arr = np.zeros(n)
+        self.cp_target_dose_arr = np.zeros(n)
+        self.total_target_dose = float(self.dataset.header.mu) if getattr(self.dataset.header, "mu", 0) > 0 else 0.0
+
         if not self.dataset.dose_mu_col or self.dataset.dose_mu_col not in self.df:
             return
 
         cp_col = next((c for c in self.df.columns if "control point" in c.lower()), None)
         if cp_col and cp_col in self.df:
-            # Multi-control-point delivery (e.g. IMRT / VMAT steps)
-            cp_maxes = self.df.groupby(cp_col)[self.dataset.dose_mu_col].max().to_dict()
-            cp_order = sorted(cp_maxes.keys())
-            cp_prior = {}
-            running = 0.0
-            for cp in cp_order:
-                cp_prior[cp] = running
-                running += max(0.0, cp_maxes[cp])
+            cp_groups = {cp: grp for cp, grp in self.df.groupby(cp_col)}
+            cp_order = sorted(cp_groups.keys())
 
-            cum_vals = np.zeros(n)
-            for cp, group in self.df.groupby(cp_col):
-                prior = cp_prior[cp]
-                step_vals = np.maximum.accumulate(np.maximum(0.0, group[self.dataset.dose_mu_col].values))
-                idx_positions = self.df.index.get_indexer(group.index)
-                cum_vals[idx_positions] = prior + step_vals
+            # Detect if dose column resets to 0 at each CP (standard Elekta TRF) or is globally monotonic
+            resets_per_cp = False
+            for i in range(1, len(cp_order)):
+                prev_max = float(cp_groups[cp_order[i - 1]][self.dataset.dose_mu_col].max())
+                curr_min = float(cp_groups[cp_order[i]][self.dataset.dose_mu_col].iloc[0])
+                if prev_max > 0.5 and curr_min < prev_max * 0.5:
+                    resets_per_cp = True
+                    break
 
-            # If header target MU is available, scale to header MU
-            if self.dataset.header.mu > 0 and running > 0:
-                cum_vals = cum_vals * (self.dataset.header.mu / running)
-            self.cumulative_mu = cum_vals
+            if resets_per_cp:
+                cp_maxes = {cp: max(0.0, float(cp_groups[cp][self.dataset.dose_mu_col].max())) for cp in cp_order}
+                running = 0.0
+                cp_prior = {}
+                for cp in cp_order:
+                    cp_prior[cp] = running
+                    running += cp_maxes[cp]
+
+                scale = (self.dataset.header.mu / running) if (self.dataset.header.mu > 0 and running > 0) else 1.0
+                cum_vals = np.zeros(n)
+                cp_vals = np.zeros(n)
+                cp_targets = np.zeros(n)
+
+                for cp in cp_order:
+                    group = cp_groups[cp]
+                    prior = cp_prior[cp]
+                    step_vals = np.maximum.accumulate(np.maximum(0.0, group[self.dataset.dose_mu_col].values))
+                    idx_positions = self.df.index.get_indexer(group.index)
+                    cum_vals[idx_positions] = (prior + step_vals) * scale
+                    cp_vals[idx_positions] = step_vals * scale
+                    cp_targets[idx_positions] = cp_maxes[cp] * scale
+
+                self.cumulative_mu = cum_vals
+                self.cp_dose_arr = cp_vals
+                self.cp_target_dose_arr = cp_targets
+            else:
+                # Monotonic step dose across CPs
+                step_vals = np.maximum.accumulate(np.maximum(0.0, self.df[self.dataset.dose_mu_col].values))
+                total_deliv = float(step_vals[-1]) if len(step_vals) > 0 else 0.0
+                scale = (self.dataset.header.mu / total_deliv) if (self.dataset.header.mu > 0 and total_deliv > 0) else 1.0
+
+                cum_vals = step_vals * scale
+                cp_vals = np.zeros(n)
+                cp_targets = np.zeros(n)
+                for cp in cp_order:
+                    group = cp_groups[cp]
+                    idx_positions = self.df.index.get_indexer(group.index)
+                    cp_min = np.maximum(0.0, group[self.dataset.dose_mu_col].iloc[0])
+                    cp_max = np.maximum(0.0, group[self.dataset.dose_mu_col].max())
+                    deliv = np.maximum(0.0, group[self.dataset.dose_mu_col].values - cp_min)
+                    cp_vals[idx_positions] = deliv * scale
+                    cp_targets[idx_positions] = (cp_max - cp_min) * scale
+
+                self.cumulative_mu = cum_vals
+                self.cp_dose_arr = cp_vals
+                self.cp_target_dose_arr = cp_targets
         else:
             # Monotonic step dose or single-segment delivery
             step_vals = np.maximum.accumulate(np.maximum(0.0, self.df[self.dataset.dose_mu_col].values))
-            if self.dataset.header.mu > 0 and len(step_vals) > 0 and step_vals[-1] > 0 and abs(self.dataset.header.mu - step_vals[-1]) / self.dataset.header.mu > 0.05:
-                step_vals = step_vals * (self.dataset.header.mu / step_vals[-1])
-            self.cumulative_mu = step_vals
+            total_deliv = float(step_vals[-1]) if len(step_vals) > 0 else 0.0
+            scale = (self.dataset.header.mu / total_deliv) if (self.dataset.header.mu > 0 and total_deliv > 0) else 1.0
+            cum_vals = step_vals * scale
+            self.cumulative_mu = cum_vals
+            self.cp_dose_arr = cum_vals
+            target_val = float(self.dataset.header.mu) if self.dataset.header.mu > 0 else total_deliv
+            self.cp_target_dose_arr = np.full(n, target_val)
+
+        if self.total_target_dose <= 0 and len(self.cumulative_mu) > 0:
+            self.total_target_dose = float(self.cumulative_mu[-1])
 
     def set_beam_only(self, beam_only: bool) -> None:
         """Toggles between beam-on delivery only and full recording."""
@@ -294,6 +349,23 @@ class TRFAnalyzer:
             except (ValueError, TypeError):
                 gating_enabled = str(raw_gate).strip().lower() in ("1", "true", "enabled", "on", "active", "gate", "gating")
 
+        # Control point
+        current_cp = 1
+        if self.dataset.control_point_col and self.dataset.control_point_col in row:
+            try:
+                current_cp = int(row[self.dataset.control_point_col])
+            except Exception:
+                current_cp = 1
+        elif self.total_control_points > 1:
+            current_cp = max(1, int(round(1 + (index / max(1, len(self.df) - 1)) * (self.total_control_points - 1))))
+
+        # CP Dose & Total Treatment Dose
+        cp_dose = float(self.cp_dose_arr[index]) if hasattr(self, "cp_dose_arr") and len(self.cp_dose_arr) > index else 0.0
+        cp_target_dose = float(self.cp_target_dose_arr[index]) if hasattr(self, "cp_target_dose_arr") and len(self.cp_target_dose_arr) > index else 0.0
+        total_target_dose = float(getattr(self, "total_target_dose", mu))
+        if total_target_dose <= 0:
+            total_target_dose = mu
+
         return {
             "index": index,
             "time_s": time_s,
@@ -308,5 +380,11 @@ class TRFAnalyzer:
             "mu": mu,
             "dose_rate": dose_rate,
             "gating": gating_enabled,
+            "current_cp": current_cp,
+            "total_cp": self.total_control_points,
+            "cp_dose": cp_dose,
+            "cp_target_dose": cp_target_dose,
+            "total_dose": mu,
+            "total_target_dose": total_target_dose,
         }
 
