@@ -18,7 +18,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Built interactive `SDDNavigatorDialog` (`gui/components/sdd_navigator.py`) with:
     - **Header bar**: Linac ID badge (`TRCC-NRT-600064`), export timestamp, package filename, delivery count, and log file count badges.
     - **Treatment Deliveries tab**: Search filter, category dropdown, sortable Treeview table (Date/Time, Plan/Field, Category, Delivered MU, Size, Filename), and one-click "Load into Viewer" button. Calibrated category row typography (`clinical`: dark slate `#0f172a`, `Daily QA`: deep sky blue `#0369a1`, `Warmup`: rich amber `#b45309`, `Shape / Test`: deep purple `#6d28d9`) for crisp, high-contrast legibility against the white table background.
-    - **Subsystem Logs tab**: Searchable treeview of `LOGFILE00000xxxx` event logs and diagnostics with one-click "Load into Text Log Viewer" button.
+    - **Subsystem Logs tab**: Searchable treeview of `LOGFILE00000xxxx` event logs and diagnostics with **Date & Time** as the first column, default sorting by **Log Category** (and chronologically by timestamp within categories), bidirectional column sorting (`Date & Time`, `Log File Name`, `Category`, `Size`), live search, and one-click "Load into Text Log Viewer" button.
     - **Machine Info & Manifest tab**: Formatted machine specifications (Machine ID, Windows OS, IPs) and full searchable RTD Manifest.
   - Added quick launch button `📦 Open SDD Package (.zip)` in the top application header and File menu items (`Ctrl+Shift+O` and `Ctrl+B`).
   - Added automated unit and GUI integration tests in `tests/test_sdd.py`.

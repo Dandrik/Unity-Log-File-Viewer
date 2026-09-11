@@ -354,26 +354,33 @@ class SDDNavigatorDialog(tk.Toplevel):
         tree_frame = ttk.Frame(parent)
         tree_frame.pack(fill="both", expand=True)
 
-        columns = ("name", "category", "size")
+        columns = ("date", "name", "category", "size")
         self.tree_log = ttk.Treeview(
             tree_frame,
             columns=columns,
             show="headings",
             selectmode="browse"
         )
-        self.tree_log.heading("name", text="Log File Name")
-        self.tree_log.heading("category", text="Category")
-        self.tree_log.heading("size", text="Size")
+        self.tree_log.heading("date", text="Date & Time", command=lambda: self._sort_log_col("date"))
+        self.tree_log.heading("name", text="Log File Name", command=lambda: self._sort_log_col("name"))
+        self.tree_log.heading("category", text="Category", command=lambda: self._sort_log_col("category"))
+        self.tree_log.heading("size", text="Size", command=lambda: self._sort_log_col("size"))
 
-        self.tree_log.column("name", width=380, anchor="w")
-        self.tree_log.column("category", width=220, anchor="w")
-        self.tree_log.column("size", width=120, anchor="e")
+        self.tree_log.column("date", width=160, anchor="w")
+        self.tree_log.column("name", width=340, anchor="w")
+        self.tree_log.column("category", width=180, anchor="w")
+        self.tree_log.column("size", width=100, anchor="e")
 
         scroll_y = ttk.Scrollbar(tree_frame, orient="vertical", command=self.tree_log.yview)
-        self.tree_log.configure(yscrollcommand=scroll_y.set)
+        scroll_x = ttk.Scrollbar(tree_frame, orient="horizontal", command=self.tree_log.xview)
+        self.tree_log.configure(yscrollcommand=scroll_y.set, xscrollcommand=scroll_x.set)
 
-        self.tree_log.pack(side="left", fill="both", expand=True)
-        scroll_y.pack(side="right", fill="y")
+        self.tree_log.grid(row=0, column=0, sticky="nsew")
+        scroll_y.grid(row=0, column=1, sticky="ns")
+        scroll_x.grid(row=1, column=0, sticky="ew")
+
+        tree_frame.columnconfigure(0, weight=1)
+        tree_frame.rowconfigure(0, weight=1)
 
         self.tree_log.bind("<Double-1>", lambda e: self._on_load_selected_log())
         self.tree_log.bind("<Return>", lambda e: self._on_load_selected_log())
@@ -387,7 +394,9 @@ class SDDNavigatorDialog(tk.Toplevel):
 
         count = 0
         for entry in self.package.log_entries:
-            if query and query not in entry.display_name.upper() and query not in entry.category.upper():
+            if query and (query not in entry.display_name.upper() and
+                          query not in entry.category.upper() and
+                          query not in (entry.date_time or "").upper()):
                 continue
 
             if entry.file_size > 1024 * 1024:
@@ -401,11 +410,46 @@ class SDDNavigatorDialog(tk.Toplevel):
                 "",
                 "end",
                 iid=entry.filename,
-                values=(entry.display_name, entry.category, sz_str)
+                values=(entry.date_time or "--", entry.display_name, entry.category, sz_str)
             )
             count += 1
 
         self.lbl_log_count.config(text=f"Showing {count} of {len(self.package.log_entries)} logs")
+
+    def _sort_log_col(self, col: str) -> None:
+        """Sorts the log treeview by the clicked column."""
+        items = self.tree_log.get_children("")
+        if not items:
+            return
+
+        asc = not self._sort_directions.get(f"log_{col}", True)
+        self._sort_directions[f"log_{col}"] = asc
+
+        col_indices = {"date": 0, "name": 1, "category": 2, "size": 3}
+        idx = col_indices.get(col, 0)
+
+        def sort_key(item_id):
+            vals = self.tree_log.item(item_id, "values")
+            val = vals[idx]
+            if col == "category":
+                return (str(val).lower(), str(vals[0]), str(vals[1]).lower())
+            elif col == "size":
+                try:
+                    parts = str(val).split()
+                    if len(parts) == 2:
+                        num, unit = float(parts[0]), parts[1].upper()
+                        mult = 1024 * 1024 if "MB" in unit else (1024 if "KB" in unit else 1)
+                        return num * mult
+                    return float(parts[0])
+                except (ValueError, IndexError):
+                    return 0.0
+            elif col == "date":
+                return (str(val), str(vals[1]).lower())
+            return str(val).lower()
+
+        sorted_items = sorted(items, key=sort_key, reverse=not asc)
+        for i, item_id in enumerate(sorted_items):
+            self.tree_log.move(item_id, "", i)
 
     def _on_load_selected_log(self) -> None:
         """Loads selected log file into the main viewer's text log view."""

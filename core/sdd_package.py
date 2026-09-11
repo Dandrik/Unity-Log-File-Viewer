@@ -38,6 +38,8 @@ class SDDLogEntry:
     display_name: str
     file_size: int
     category: str          # 'Machine Event Log', 'System Info', 'Manifest', 'Boot Log', 'Other'
+    date_time: str = "--"  # Formatted datetime e.g. '2026-09-08 14:53:20'
+    modified_dt: Optional[datetime] = None  # Parsed datetime for chronological sorting
 
 
 @dataclass
@@ -99,10 +101,25 @@ class SDDPackage:
     # Indexing
     # -------------------------------------------------------------------------
 
-    def _get_file_list(self) -> List[Tuple[str, int]]:
-        """Returns list of (relative_path, size_bytes) for all files in the package."""
+    def _get_file_list(self) -> List[Tuple[str, int, str, Optional[datetime]]]:
+        """Returns list of (relative_path, size_bytes, date_time_str, dt_obj) for all files in the package."""
         if self.is_zip and self._zip_file:
-            return [(info.filename, info.file_size) for info in self._zip_file.infolist() if not info.is_dir()]
+            result = []
+            for info in self._zip_file.infolist():
+                if info.is_dir():
+                    continue
+                dt_obj = None
+                date_str = "--"
+                if info.date_time and len(info.date_time) >= 6:
+                    try:
+                        y, mo, d, h, mi, s = info.date_time[:6]
+                        if y >= 1980 and 1 <= mo <= 12 and 1 <= d <= 31:
+                            dt_obj = datetime(y, mo, d, h, mi, s)
+                            date_str = dt_obj.strftime("%Y-%m-%d %H:%M:%S")
+                    except (ValueError, OverflowError):
+                        pass
+                result.append((info.filename, info.file_size, date_str, dt_obj))
+            return result
         elif self.is_dir:
             file_list = []
             for root, _, files in os.walk(self.path):
@@ -113,7 +130,15 @@ class SDDPackage:
                         sz = os.path.getsize(full_p)
                     except OSError:
                         sz = 0
-                    file_list.append((rel_p, sz))
+                    dt_obj = None
+                    date_str = "--"
+                    try:
+                        mtime = os.path.getmtime(full_p)
+                        dt_obj = datetime.fromtimestamp(mtime)
+                        date_str = dt_obj.strftime("%Y-%m-%d %H:%M:%S")
+                    except (OSError, ValueError, OverflowError):
+                        pass
+                    file_list.append((rel_p, sz, date_str, dt_obj))
             return file_list
         return []
 
@@ -137,7 +162,7 @@ class SDDPackage:
 
         # 2. Index TRF treatment delivery files
         trf_files = [f for f in files if f[0].lower().endswith(".trf")]
-        for rel_name, size in trf_files:
+        for rel_name, size, d_str, dt_obj in trf_files:
             try:
                 # Read first 16 KB to parse the header instantaneously
                 header_slice = self._read_raw_bytes(rel_name, max_bytes=16384)
@@ -154,14 +179,15 @@ class SDDPackage:
                     field_name="--",
                     mu=0.0,
                     file_size=size,
-                    category=cat
+                    category=cat,
+                    delivery_dt=dt_obj
                 ))
 
         # Sort TRFs chronologically by delivery datetime (or filename)
         self.trf_entries.sort(key=lambda e: (e.delivery_dt or datetime.min, e.display_name))
 
         # 3. Index Machine Event & Subsystem Logs
-        for rel_name, size in files:
+        for rel_name, size, d_str, dt_obj in files:
             lower = rel_name.lower()
             base = os.path.basename(rel_name)
             if lower.endswith(".trf"):
@@ -172,43 +198,53 @@ class SDDPackage:
                     filename=rel_name,
                     display_name=base,
                     file_size=size,
-                    category="Machine Event Log"
+                    category="Machine Event Log",
+                    date_time=d_str,
+                    modified_dt=dt_obj
                 ))
             elif "manifest" in lower:
                 self.log_entries.append(SDDLogEntry(
                     filename=rel_name,
                     display_name=base,
                     file_size=size,
-                    category="Manifest"
+                    category="Manifest",
+                    date_time=d_str,
+                    modified_dt=dt_obj
                 ))
             elif "registry" in lower:
                 self.log_entries.append(SDDLogEntry(
                     filename=rel_name,
                     display_name=base,
                     file_size=size,
-                    category="Registry Dump"
+                    category="Registry Dump",
+                    date_time=d_str,
+                    modified_dt=dt_obj
                 ))
             elif "bootlog" in lower or "crashlog" in lower:
                 self.log_entries.append(SDDLogEntry(
                     filename=rel_name,
                     display_name=base,
                     file_size=size,
-                    category="RTC Boot/Crash Log"
+                    category="RTC Boot/Crash Log",
+                    date_time=d_str,
+                    modified_dt=dt_obj
                 ))
             elif lower.endswith(".txt") or lower.endswith(".log") or lower.endswith(".evt"):
                 self.log_entries.append(SDDLogEntry(
                     filename=rel_name,
                     display_name=base,
                     file_size=size,
-                    category="System Log"
+                    category="System Log",
+                    date_time=d_str,
+                    modified_dt=dt_obj
                 ))
             else:
                 self.other_files.append(rel_name)
 
-        # Sort logs by name
-        self.log_entries.sort(key=lambda e: (e.category, e.display_name))
+        # Sort logs by category by default, then chronologically by timestamp
+        self.log_entries.sort(key=lambda e: (e.category, e.modified_dt or datetime.min, e.display_name))
 
-    def _parse_machine_metadata(self, files: List[Tuple[str, int]]) -> None:
+    def _parse_machine_metadata(self, files: List[Tuple]) -> None:
         """Extracts Linac ID, OS, software build, and timestamps from filename and manifest."""
         # Check filename pattern e.g. SDD+TRCC-NRT-600064+2+1+1+1+12568+1+EB+20260908+145318
         m_id = re.search(r"SDD\+([^+]+)\+", self.name, re.IGNORECASE)
@@ -221,7 +257,8 @@ class SDDPackage:
             self.machine_info.export_timestamp = f"{y}-{mo}-{d} {h}:{mi}:{s}"
 
         # Inspect manifest file if present
-        for rel_name, _ in files:
+        for item in files:
+            rel_name = item[0]
             if "manifest" in rel_name.lower() and rel_name.lower().endswith(".txt"):
                 try:
                     data = self._read_raw_bytes(rel_name, max_bytes=65536)

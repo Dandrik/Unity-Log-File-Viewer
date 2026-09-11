@@ -80,11 +80,14 @@ class TestSDDPackage(unittest.TestCase):
         self.assertEqual(categories["26_09_09 10_15_00 Z DailyQA3.trf"], "Daily QA")
         self.assertEqual(categories["26_09_09 11_30_00 Z 1_1.trf"], "Clinical Treatment")
 
-        # Verify log discovery
+        # Verify log discovery and timestamps
         self.assertEqual(len(pkg.log_entries), 2)
         log_names = [e.display_name for e in pkg.log_entries]
         self.assertIn("LOGFILE000009999", log_names)
         self.assertIn("RTDManifest.txt", log_names)
+        # Verify default sorting by category
+        log_cats = [e.category for e in pkg.log_entries]
+        self.assertEqual(log_cats, sorted(log_cats))
 
         # Test log text reading
         txt = pkg.get_log_text("LOGFILE000009999")
@@ -179,9 +182,19 @@ class TestSDDPackage(unittest.TestCase):
         dlg._on_load_selected_trf()
         self.assertEqual(len(loaded_trf), 1)
 
-        # Test Log Tab selection
+        # Test Log Tab selection and Date & Time first column
         log_rows = dlg.tree_log.get_children()
         self.assertEqual(len(log_rows), 2)
+        log_vals = dlg.tree_log.item(log_rows[0], "values")
+        self.assertEqual(len(log_vals), 4)  # (date, name, category, size)
+        self.assertNotEqual(log_vals[0], "")
+
+        # Test log column sorting
+        dlg._sort_log_col("date")
+        dlg._sort_log_col("name")
+        dlg._sort_log_col("size")
+        dlg._sort_log_col("category")
+
         dlg.tree_log.selection_set(log_rows[0])
         dlg._on_load_selected_log()
         self.assertEqual(len(loaded_log), 1)

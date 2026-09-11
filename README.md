@@ -14,7 +14,7 @@ A Python desktop GUI application built for the **Elekta Unity MR-Linac system** 
   * Zero-extraction, high-speed in-memory indexing: extracts and decodes headers for 50+ TRFs in under 100 milliseconds without extracting files to disk.
 * **Interactive SDD Package Navigator (`Ctrl+B`)**:
   * **🎯 Treatment Deliveries Tab**: View, search, and filter all 25 Hz binary TRF deliveries by category (`Clinical Treatment`, `Daily QA`, `Warmup`, `Shape / Test`), date/time, field name, delivered MU, and size. Double-click or click **Load into Viewer** to immediately inspect in Treatment Playback, Gantry Dynamics, and Leaf QA.
-  * **📋 Subsystem Logs Tab**: Browse and inspect machine event logs (`LOGFILE00000xxxx`), manifests (`RTDManifest.txt`), and registry dumps (`RTDRegistry.txt`). Double-click or click **Load into Text Log Viewer** to parse and analyze in the Machine Event & Text Logs tab.
+  * **📋 Subsystem Logs Tab**: Browse and inspect machine event logs (`LOGFILE00000xxxx`), manifests (`RTDManifest.txt`), and registry dumps (`RTDRegistry.txt`) with **Date & Time** as the first column, default sorting by **Log Category** (and chronologically within categories), live search, and multi-column sorting. Double-click or click **Load into Text Log Viewer** to parse and analyze in the Machine Event & Text Logs tab.
   * **ℹ️ Machine Info & Manifest Tab**: Inspect linac machine ID (e.g. `TRCC-NRT-600064`), SDD export timestamp, Windows OS build, network IP addresses, and the complete formatted RTD Manifest.
 
 ### 🎯 Treatment Playback (Beam's Eye View)
