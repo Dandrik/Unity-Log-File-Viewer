@@ -28,6 +28,24 @@ class TestTRFReader(unittest.TestCase):
         # Check dataframe size
         self.assertEqual(len(dataset.dataframe), 100)
 
+    def test_trf_header_mu_scaling(self):
+        """Verifies that raw header MU (stored in 0.1 MU units / dMU) is correctly divided by 10.0."""
+        from unittest.mock import MagicMock
+
+        raw_hdr = MagicMock()
+        raw_hdr.machine = "Unity-01"
+        raw_hdr.date = "2026-09-10 10:15:32"
+        raw_hdr.timezone = "+00:00"
+        raw_hdr.field_label = "1-1"
+        raw_hdr.field_name = "VMAT_PROSTATE"
+        raw_hdr.mu = 7614.0  # 7614.0 in raw header corresponds to 761.4 MU
+        raw_hdr.version = 2
+
+        header = TRFReader._build_header(raw_hdr)
+        self.assertAlmostEqual(header.mu, 761.4, places=2)
+        self.assertEqual(header.machine, "Unity-01")
+        self.assertEqual(header.field_name, "VMAT_PROSTATE")
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -4,6 +4,7 @@ import tkinter as tk
 from tkinter import ttk
 from typing import Callable, Dict, List, Optional
 from datetime import datetime, timedelta
+import math
 from core.trf_analyzer import TRFAnalyzer
 from gui.styles import AppTheme
 
@@ -52,6 +53,8 @@ class MLCCanvas(ttk.Frame):
         self.end_datetime: Optional[datetime] = None
         self.current_dose_rate: float = 0.0
         self.current_gating: bool = False
+        self.current_gantry_angle: float = 0.0
+        self.current_gantry_error: float = 0.0
 
         # Display parameters (mm to pixels)
         self.canvas_width = 540
@@ -123,6 +126,7 @@ class MLCCanvas(ttk.Frame):
         self.lbl_tx_end = ttk.Label(self, text="--")
         self.lbl_dose_rate = ttk.Label(self, text="--")
         self.lbl_gating = ttk.Label(self, text="DISABLED")
+        self.lbl_gantry_angle = ttk.Label(self, text="0.0°")
 
         # Scrubber bar pinned to the bottom (always visible)
         self.ctrl_frame = ttk.Frame(self, style="Card.TFrame", padding=(8, 6))
@@ -283,6 +287,11 @@ class MLCCanvas(ttk.Frame):
         self.current_gating = bool(data.get("gating", False))
         self.lbl_gating.config(text="ENABLED" if self.current_gating else "DISABLED")
 
+        # Update Current Gantry Angle & Error
+        self.current_gantry_angle = float(data.get("gantry_angle", 0.0))
+        self.current_gantry_error = float(data.get("gantry_error", 0.0))
+        self.lbl_gantry_angle.config(text=f"{self.current_gantry_angle:.1f}°")
+
     def _draw_axes(self) -> None:
         """Draws isocenter crosshairs, 50mm grid ticks, and the 57.4 x 22.0 cm field frame."""
         self.canvas.delete("all")
@@ -344,9 +353,10 @@ class MLCCanvas(ttk.Frame):
             # Field dimension label
             self.canvas.create_text(self.cx, fy1 - 12, text="Max Field: 57.4 × 22.0 cm (Elekta Unity)", fill="#64748b", font=FONT_BEV_CANVAS_SMALL, anchor="s", tags="grid")
 
-        # Always draw treatment timestamps and dose rate bar on the blue background to the right of the MLC display
+        # Always draw treatment timestamps, dose rate bar, and gantry indicator on the blue background to the right of the MLC display
         self._draw_datetimes()
         self._draw_doserate(self.current_dose_rate, self.current_gating)
+        self._draw_gantry(self.current_gantry_angle, self.current_gantry_error)
 
     def _on_y2_orientation_changed(self, event=None) -> None:
         """Handles change in Y2 bank orientation (Right, Left, Top, Bottom)."""
@@ -531,9 +541,10 @@ class MLCCanvas(ttk.Frame):
                 self.canvas.create_text(self.cx, top_wall_px + 20, text="▲ Bank Y1", fill="#60a5fa", font=FONT_BEV_CANVAS_LARGE, anchor="center", tags="jaw")
                 self.canvas.create_text(self.cx, bot_wall_px - 20, text="Bank Y2 ▼", fill="#22d3ee", font=FONT_BEV_CANVAS_LARGE, anchor="center", tags="jaw")
 
-        # Always draw treatment timestamps and dose rate bar on the blue background to the right of the MLC display
+        # Always draw treatment timestamps, dose rate bar, and gantry indicator on the blue background to the right of the MLC display
         self._draw_datetimes()
         self._draw_doserate(self.current_dose_rate, self.current_gating)
+        self._draw_gantry(self.current_gantry_angle, self.current_gantry_error)
 
     def _draw_datetimes(self) -> None:
         """Draws treatment timestamps to the right of the MLC display on top of the blue canvas background."""
@@ -552,12 +563,12 @@ class MLCCanvas(ttk.Frame):
             x_label = max(10.0, w - 270.0)
 
         x_val = x_label + 95.0
-        y_base = 25.0
+        y_base = 20.0
 
         # Subtle translucent / dark navy card on the blue background
         box_pad = 12.0
-        box_w = 262.0
-        box_h = 90.0
+        box_w = 270.0
+        box_h = 84.0
         self.canvas.create_rectangle(
             x_label - box_pad,
             y_base - 8.0,
@@ -598,7 +609,7 @@ class MLCCanvas(ttk.Frame):
 
         # Row 2: Current Control Point Date & Time (Highlighted in cyan/sky blue)
         self.canvas.create_text(
-            x_label, y_base + 36.0,
+            x_label, y_base + 34.0,
             text="Current CP:",
             fill="#38bdf8",
             font=FONT_BEV_DT_LABEL_BOLD,
@@ -606,7 +617,7 @@ class MLCCanvas(ttk.Frame):
             tags="datetime"
         )
         self.canvas.create_text(
-            x_val, y_base + 36.0,
+            x_val, y_base + 34.0,
             text=current_str,
             fill="#38bdf8",
             font=FONT_BEV_DT_VAL_BOLD,
@@ -616,7 +627,7 @@ class MLCCanvas(ttk.Frame):
 
         # Row 3: Treatment End Date & Time
         self.canvas.create_text(
-            x_label, y_base + 64.0,
+            x_label, y_base + 60.0,
             text="Tx End:",
             fill="#94a3b8",
             font=FONT_BEV_DT_LABEL_BOLD,
@@ -624,7 +635,7 @@ class MLCCanvas(ttk.Frame):
             tags="datetime"
         )
         self.canvas.create_text(
-            x_val, y_base + 64.0,
+            x_val, y_base + 60.0,
             text=end_str,
             fill="#f8fafc",
             font=FONT_BEV_DT_VAL,
@@ -657,8 +668,8 @@ class MLCCanvas(ttk.Frame):
         box_w = 270.0
         box_x1 = x_label - box_pad
         box_x2 = box_x1 + box_w
-        box_y1 = 122.0
-        box_h = 240.0
+        box_y1 = 104.0
+        box_h = 190.0
         box_y2 = box_y1 + box_h
 
         # Translucent dark card
@@ -698,8 +709,8 @@ class MLCCanvas(ttk.Frame):
         bar_x1 = box_x1 + 24.0
         bar_w = 22.0
         bar_x2 = bar_x1 + bar_w
-        bar_top_y = box_y1 + 44.0
-        bar_bot_y = box_y1 + 218.0
+        bar_top_y = box_y1 + 40.0
+        bar_bot_y = box_y1 + 170.0
         bar_h = bar_bot_y - bar_top_y
 
         # Meter background trough
@@ -774,8 +785,8 @@ class MLCCanvas(ttk.Frame):
         # Turns bright red (#dc2626) when gating is enabled
         gate_x1 = box_x1 + 148.0
         gate_x2 = box_x1 + 254.0
-        gate_y1 = box_y1 + 82.0
-        gate_y2 = box_y1 + 162.0
+        gate_y1 = box_y1 + 65.0
+        gate_y2 = box_y1 + 145.0
 
         if is_gating:
             gate_fill = "#dc2626"
@@ -816,6 +827,142 @@ class MLCCanvas(ttk.Frame):
             font=FONT_BEV_GATE_STATUS,
             anchor="center",
             tags="doserate"
+        )
+
+    def _draw_gantry(self, angle: Optional[float] = None, error: Optional[float] = None) -> None:
+        """Draws Gantry angle readout and a black circle with a red arrow pointing towards the center in the gantry direction."""
+        self.canvas.delete("gantry_display")
+
+        if angle is not None:
+            self.current_gantry_angle = angle
+        else:
+            angle = self.current_gantry_angle
+
+        if error is not None:
+            self.current_gantry_error = error
+        else:
+            error = self.current_gantry_error
+
+        w = self.canvas_width
+        if self.y2_orientation in ("Right", "Left"):
+            mlc_right_px = self.cx + (UNITY_PARK_WALL_MM * self.scale)
+        else:
+            mlc_right_px = self.cx + (UNITY_STACK_LIMIT_MM * self.scale)
+
+        # Position to the right of the MLC display on top of the blue background
+        if w >= 800:
+            x_label = max(mlc_right_px + 28.0, w - 275.0)
+        else:
+            x_label = max(10.0, w - 270.0)
+
+        box_pad = 12.0
+        box_w = 270.0
+        box_x1 = x_label - box_pad
+        box_x2 = box_x1 + box_w
+        box_y1 = 306.0
+        box_h = 175.0
+        box_y2 = box_y1 + box_h
+
+        # Translucent dark card
+        self.canvas.create_rectangle(
+            box_x1, box_y1, box_x2, box_y2,
+            fill="#131d35",
+            outline="#334155",
+            width=1,
+            tags="gantry_display"
+        )
+
+        # Update compatibility label
+        ang_str = f"{angle:.1f}°"
+        self.lbl_gantry_angle.config(text=ang_str)
+
+        # Row 1: Gantry Angle header readout
+        self.canvas.create_text(
+            box_x1 + 14.0, box_y1 + 16.0,
+            text="Gantry Angle:",
+            fill="#94a3b8",
+            font=FONT_BEV_DT_LABEL_BOLD,
+            anchor="w",
+            tags="gantry_display"
+        )
+
+        err_str = f" ({error:+.2f}°)" if abs(error) > 0.01 else ""
+        self.canvas.create_text(
+            box_x1 + 112.0, box_y1 + 16.0,
+            text=f"{ang_str}{err_str}",
+            fill="#38bdf8",
+            font=FONT_BEV_DT_VAL_BOLD,
+            anchor="w",
+            tags="gantry_display"
+        )
+
+        # Black circle (pure black fill as requested)
+        gcx = box_x1 + (box_w / 2.0)
+        gcy = box_y1 + 100.0
+        R = 46.0
+
+        self.canvas.create_oval(
+            gcx - R, gcy - R, gcx + R, gcy + R,
+            fill="#000000",
+            outline="#475569",
+            width=2,
+            tags="gantry_display"
+        )
+
+        # Cardinal ticks & labels (IEC 61217: 0° Top, 90° Right, 180° Bottom, 270° Left)
+        cardinals = [
+            (0,   "0°",   0,      -R - 7, "s"),
+            (90,  "90°",  R + 7,  0,      "w"),
+            (180, "180°", 0,      R + 7,  "n"),
+            (270, "270°", -R - 7, 0,      "e"),
+        ]
+        for c_ang, c_lbl, lx_off, ly_off, anc in cardinals:
+            rad_c = math.radians(c_ang)
+            tx1 = gcx + (R - 4.0) * math.sin(rad_c)
+            ty1 = gcy - (R - 4.0) * math.cos(rad_c)
+            tx2 = gcx + R * math.sin(rad_c)
+            ty2 = gcy - R * math.cos(rad_c)
+            self.canvas.create_line(tx1, ty1, tx2, ty2, fill="#64748b", width=1, tags="gantry_display")
+            self.canvas.create_text(
+                gcx + lx_off, gcy + ly_off,
+                text=c_lbl,
+                fill="#64748b",
+                font=("Segoe UI", 9),
+                anchor=anc,
+                tags="gantry_display"
+            )
+
+        # Subtle center isocenter crosshair
+        self.canvas.create_line(gcx - 5, gcy, gcx + 5, gcy, fill="#334155", width=1, tags="gantry_display")
+        self.canvas.create_line(gcx, gcy - 5, gcx, gcy + 5, fill="#334155", width=1, tags="gantry_display")
+        self.canvas.create_oval(gcx - 2, gcy - 2, gcx + 2, gcy + 2, fill="#475569", outline="", tags="gantry_display")
+
+        # Red arrow pointing in from the black circle towards the center in the direction the gantry is at
+        rad = math.radians(angle)
+        sx = gcx + (R - 2.0) * math.sin(rad)
+        sy = gcy - (R - 2.0) * math.cos(rad)
+
+        r_end = 10.0
+        ex = gcx + r_end * math.sin(rad)
+        ey = gcy - r_end * math.cos(rad)
+
+        # Red arrow line with arrowhead pointing towards center
+        self.canvas.create_line(
+            sx, sy, ex, ey,
+            fill="#ef4444",
+            width=3,
+            arrow="last",
+            arrowshape=(12, 14, 5),
+            tags="gantry_display"
+        )
+
+        # Radiation source dot at perimeter
+        self.canvas.create_oval(
+            sx - 4, sy - 4, sx + 4, sy + 4,
+            fill="#ef4444",
+            outline="#fca5a5",
+            width=1,
+            tags="gantry_display"
         )
 
     def _on_mouse_hover(self, event: tk.Event) -> None:

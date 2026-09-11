@@ -14,10 +14,47 @@ class TRFAnalyzer:
         self.dataset = dataset
         self.df = dataset.dataframe
         self.beam_only = beam_only
+        self._precompute_cumulative_mu()
         self.active_df = self._get_active_df()
         self.stats: Optional[DeliveryQAStats] = None
         self.leaf_stats: List[LeafErrorStats] = []
         self._analyze()
+
+    def _precompute_cumulative_mu(self) -> None:
+        """Precomputes cumulative delivered MU across dataframe rows for scrubbing and stats."""
+        n = len(self.df)
+        self.cumulative_mu = np.zeros(n)
+        if not self.dataset.dose_mu_col or self.dataset.dose_mu_col not in self.df:
+            return
+
+        cp_col = next((c for c in self.df.columns if "control point" in c.lower()), None)
+        if cp_col and cp_col in self.df:
+            # Multi-control-point delivery (e.g. IMRT / VMAT steps)
+            cp_maxes = self.df.groupby(cp_col)[self.dataset.dose_mu_col].max().to_dict()
+            cp_order = sorted(cp_maxes.keys())
+            cp_prior = {}
+            running = 0.0
+            for cp in cp_order:
+                cp_prior[cp] = running
+                running += max(0.0, cp_maxes[cp])
+
+            cum_vals = np.zeros(n)
+            for cp, group in self.df.groupby(cp_col):
+                prior = cp_prior[cp]
+                step_vals = np.maximum.accumulate(np.maximum(0.0, group[self.dataset.dose_mu_col].values))
+                idx_positions = self.df.index.get_indexer(group.index)
+                cum_vals[idx_positions] = prior + step_vals
+
+            # If header target MU is available, scale to header MU
+            if self.dataset.header.mu > 0 and running > 0:
+                cum_vals = cum_vals * (self.dataset.header.mu / running)
+            self.cumulative_mu = cum_vals
+        else:
+            # Monotonic step dose or single-segment delivery
+            step_vals = np.maximum.accumulate(np.maximum(0.0, self.df[self.dataset.dose_mu_col].values))
+            if self.dataset.header.mu > 0 and len(step_vals) > 0 and step_vals[-1] > 0 and abs(self.dataset.header.mu - step_vals[-1]) / self.dataset.header.mu > 0.05:
+                step_vals = step_vals * (self.dataset.header.mu / step_vals[-1])
+            self.cumulative_mu = step_vals
 
     def set_beam_only(self, beam_only: bool) -> None:
         """Toggles between beam-on delivery only and full recording."""
@@ -146,10 +183,12 @@ class TRFAnalyzer:
 
         # Delivered MU
         delivered_mu = 0.0
-        if self.dataset.dose_mu_col and self.dataset.dose_mu_col in df:
-            delivered_mu = float(df[self.dataset.dose_mu_col].max())
-        elif self.dataset.header.mu > 0:
+        if self.dataset.header.mu > 0:
             delivered_mu = self.dataset.header.mu
+        elif hasattr(self, "cumulative_mu") and len(self.cumulative_mu) > 0 and self.cumulative_mu[-1] > 0:
+            delivered_mu = float(self.cumulative_mu[-1])
+        elif self.dataset.dose_mu_col and self.dataset.dose_mu_col in df:
+            delivered_mu = float(df[self.dataset.dose_mu_col].max())
 
         self.stats = DeliveryQAStats(
             total_samples=total_samples,
@@ -230,8 +269,13 @@ class TRFAnalyzer:
         g_angle = float(row[self.dataset.gantry_actual_col]) if self.dataset.gantry_actual_col in row else 0.0
         g_err = float(row[self.dataset.gantry_error_col]) if self.dataset.gantry_error_col in row else 0.0
 
-        # MU
-        mu = float(row[self.dataset.dose_mu_col]) if self.dataset.dose_mu_col in row else 0.0
+        # MU (Cumulative delivered MU up to this frame)
+        if hasattr(self, "cumulative_mu") and len(self.cumulative_mu) > index:
+            mu = float(self.cumulative_mu[index])
+        elif self.dataset.dose_mu_col and self.dataset.dose_mu_col in row:
+            mu = float(row[self.dataset.dose_mu_col])
+        else:
+            mu = 0.0
 
         # Dose Rate (MU/min)
         dose_rate = 0.0

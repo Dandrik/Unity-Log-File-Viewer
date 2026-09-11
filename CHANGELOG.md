@@ -10,6 +10,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased] - 2026-09-11
 
 ### Added
+- **Gantry Angle & Radiation Beam Direction Circle**:
+  - Added real-time numeric Gantry Angle readout (`Gantry Angle: <val>°` with error tracking `(±<err>°)`) positioned directly below the dose rate and gating card.
+  - Added pure black circular gantry indicator (`fill="#000000"`) below the readout with IEC 61217 cardinal markings (`0°` top, `90°` right, `180°` bottom, `270°` left) and central isocenter crosshairs (`+`).
+  - Added dynamic red arrow (`#ef4444`, `arrow="last"`) pointing inward from the perimeter of the circle towards the isocenter in the direction the gantry is positioned, accompanied by a radiation source origin dot on the perimeter.
 - **Gating Indicator Box**:
   - Added a dedicated status indicator box labeled **Gating** in the dose rate subwindow directly to the right of the vertical bar graph.
   - Box turns **bright red** (`#dc2626` background, `#ef4444` border) with bold white text and an `ENABLED` badge when motion tracking or beam hold gating is active.
@@ -37,6 +41,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Added `test_treatment_playback_datetime_display`: Validates start, current CP, and end timestamp calculations and slider updates.
   - Added `test_treatment_playback_doserate_display`: Validates dose rate extraction, readout formatting, and 0 vs 500 MU/min bar graph scaling.
   - Added `test_treatment_playback_gating_box`: Tests Gating box rendering, normal state (`#0b1120`, `DISABLED`), and active red alert state (`#dc2626`, `ENABLED`).
+  - Added `test_treatment_playback_gantry_circle`: Verifies gantry angle label formatting, `gantry_display` canvas items, pure black circle (`#000000`), inward red arrow (`#ef4444`), and custom angle redraw.
+  - Added `test_trf_header_mu_scaling`: Verifies that raw binary header MU (in 0.1 MU / dMU units) is divided by 10.0 to convert to true Monitor Units.
+  - Added `test_cumulative_mu_and_total_mu`: Verifies total MU in summary stats and monotonic cumulative MU progression during scrubbing.
+  - Added `test_delivered_mu_card_display`: Verifies that the Delivered MU KPI card above Treatment Playback correctly displays formatted MU.
+
+### Fixed
+- **Delivered MU Header Scale Factor (10x Calibration)**:
+  - Fixed a $10\times$ factor discrepancy in the **Delivered MU** KPI stat card above the Treatment Playback window (e.g. displaying `7614.0 MU` instead of `761.4 MU`).
+  - Elekta Unity TRF binary headers record Monitor Units in tenths of an MU ($0.1\text{ MU}$ / dMU); calibrated `TRFReader._build_header` to divide raw header MU by $10.0$.
+  - Implemented multi-control-point cumulative MU precomputation in `TRFAnalyzer._precompute_cumulative_mu` so that the `MU: ...` playback indicator and delivery statistics accurately track cumulative dose from 0.0 MU up to the true total delivered MU across the entire field.
 
 ### Changed
 - **Tab Renaming**:

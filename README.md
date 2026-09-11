@@ -32,8 +32,16 @@ A Python desktop GUI application built for the **Elekta Unity MR-Linac system** 
   * Automatically turns **bright red** (`#dc2626` / `#ef4444`) with bold white text and `ENABLED` badge when motion tracking or beam hold gating is active.
   * Displays dark navy (`#0b1120`) with muted slate text and `DISABLED` badge when gating is inactive.
   * Native detection of TRF gating channels (`Gating`, `beam hold`, and Unity EDLI channel `2546`).
+* **Real-Time Gantry Angle & Inward Radiation Beam Indicator**:
+  * Positioned directly below the dose rate and gating card on the deep blue canvas background.
+  * Live numeric readout (`Gantry Angle: <val>°`) with instantaneous positional error tracking (`±<err>°`).
+  * Pure black circle (`#000000`) representing the gantry ring with cardinal ticks and labels (`0°`, `90°`, `180°`, `270°`) following IEC 61217 coordinates (0° overhead, clockwise).
+  * Central isocenter crosshairs (`+`) and a prominent red arrow (`#ef4444`) pointing **in** from the black circle perimeter towards the center in the direction the gantry is positioned, clearly depicting the radiation beam entry direction.
 * **High-Visibility Scaled Typography**:
   * All canvas readouts, axis labels, and beam metric texts are scaled 1.5x larger for optimal viewing on clinical monitors.
+* **Delivered Monitor Unit (MU) Calibration & Real-Time Tracking**:
+  * Accurate calibration for Elekta TRF binary header format (stored in tenths of an MU / $0.1\text{ MU}$), displaying true delivered dose (e.g. `761.4 MU`) in the summary KPI card above playback.
+  * Monotonic multi-control-point cumulative MU reconstruction dynamically advances the `MU: ...` playback indicator from `0.0 MU` to the full delivered dose during animation and scrubbing.
 * **Playback & Inspection Controls**:
   * Interactive timeline scrubber, frame step controls, and variable-speed animation (1x, 2x, 5x, 10x).
   * Color-coded error tagging directly on individual leaves (green: nominal, amber: > 1.0 mm, red: > 2.0 mm).

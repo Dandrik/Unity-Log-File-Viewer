@@ -39,18 +39,24 @@ class TRFReader:
         table_df = decode_trf_table(trf_table_bytes, header_df)
 
         # Parse Header
-        header = TRFHeader(
-            machine=str(raw_header.machine or ""),
-            date=str(raw_header.date or ""),
-            timezone=str(raw_header.timezone or ""),
-            field_label=str(raw_header.field_label or ""),
-            field_name=str(raw_header.field_name or ""),
-            mu=float(raw_header.mu) if raw_header.mu else 0.0,
-            version=int(raw_header.version) if raw_header.version else 0,
-        )
+        header = TRFReader._build_header(raw_header)
 
         # Construct Dataset
         return TRFReader._build_dataset(header, table_df)
+
+    @staticmethod
+    def _build_header(raw_header) -> TRFHeader:
+        """Parses raw TRF header, scaling MU from 0.1 MU units (dMU) to true Monitor Units."""
+        header_mu = (float(raw_header.mu) / 10.0) if getattr(raw_header, "mu", None) else 0.0
+        return TRFHeader(
+            machine=str(getattr(raw_header, "machine", "") or ""),
+            date=str(getattr(raw_header, "date", "") or ""),
+            timezone=str(getattr(raw_header, "timezone", "") or ""),
+            field_label=str(getattr(raw_header, "field_label", "") or ""),
+            field_name=str(getattr(raw_header, "field_name", "") or ""),
+            mu=header_mu,
+            version=int(getattr(raw_header, "version", 0) or 0),
+        )
 
     @staticmethod
     def _build_dataset(header: TRFHeader, df: pd.DataFrame) -> TRFDataset:

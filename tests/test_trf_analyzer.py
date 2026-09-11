@@ -42,6 +42,18 @@ class TestTRFAnalyzer(unittest.TestCase):
         self.assertIn("gating", snap)
         self.assertIsInstance(snap["gating"], bool)
 
+    def test_cumulative_mu_and_total_mu(self):
+        """Verifies total MU in summary stats and monotonic cumulative MU progression during scrubbing."""
+        self.assertEqual(self.analyzer.stats.total_mu, 250.0)
+        first_frame = self.analyzer.get_aperture_at_index(0)
+        mid_frame = self.analyzer.get_aperture_at_index(100)
+        last_frame = self.analyzer.get_aperture_at_index(199)
+
+        self.assertEqual(first_frame["mu"], 0.0)
+        self.assertGreater(mid_frame["mu"], 0.0)
+        self.assertLess(mid_frame["mu"], 250.0)
+        self.assertAlmostEqual(last_frame["mu"], 250.0, places=2)
+
 
 if __name__ == "__main__":
     unittest.main()

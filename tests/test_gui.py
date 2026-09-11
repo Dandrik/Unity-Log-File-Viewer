@@ -190,6 +190,44 @@ class TestGUI(unittest.TestCase):
         self.assertEqual(len(gating_texts), 1)
         self.assertEqual(canvas.canvas.itemcget(gating_texts[0], "fill"), "#ffffff")
 
+    def test_treatment_playback_gantry_circle(self):
+        """Verifies Gantry angle readout, black circle, and red arrow on canvas."""
+        self.app.trf_view.load_sample_data()
+        canvas = self.app.trf_view.mlc_canvas
+
+        # Initial frame gantry angle
+        self.assertTrue(canvas.lbl_gantry_angle.cget("text").endswith("°"))
+
+        # Canvas items tagged with 'gantry_display' must be present
+        gantry_items = canvas.canvas.find_withtag("gantry_display")
+        self.assertGreater(len(gantry_items), 5)
+
+        # Check black circle
+        black_circles = [
+            i for i in gantry_items
+            if canvas.canvas.type(i) == "oval" and canvas.canvas.itemcget(i, "fill") == "#000000"
+        ]
+        self.assertEqual(len(black_circles), 1)
+
+        # Check red arrow line
+        red_arrows = [
+            i for i in gantry_items
+            if canvas.canvas.type(i) == "line" and canvas.canvas.itemcget(i, "fill") == "#ef4444"
+        ]
+        self.assertEqual(len(red_arrows), 1)
+
+        # Custom angle test: e.g. 90.0 degrees
+        canvas._draw_gantry(90.0, error=0.0)
+        self.assertEqual(canvas.lbl_gantry_angle.cget("text"), "90.0°")
+        gantry_items_90 = canvas.canvas.find_withtag("gantry_display")
+        self.assertGreater(len(gantry_items_90), 5)
+
+    def test_delivered_mu_card_display(self):
+        """Verifies that the Delivered MU card above the Treatment Playback window displays correct MU value."""
+        self.app.trf_view.load_sample_data()
+        card_text = self.app.trf_view.card_mu.value_label.cget("text")
+        self.assertEqual(card_text, "250.0 MU")
+
 
 if __name__ == "__main__":
     unittest.main()
