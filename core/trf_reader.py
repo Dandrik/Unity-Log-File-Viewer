@@ -147,7 +147,6 @@ class TRFReader:
         # Dose: linearly increasing MU
         total_mu = 250.0
         data["Step Dose/Actual Value (Mu)"] = np.linspace(0, total_mu, num_points)
-        data["Actual Dose Rate/Actual Value (Mu/min)"] = np.full(num_points, 450.0) + np.random.normal(0, 5.0, num_points)
         dose_rates = np.full(num_points, 450.0) + np.random.normal(0, 5.0, num_points)
 
         # Gating (motion tracking beam hold): active during samples 180-220 and 340-370

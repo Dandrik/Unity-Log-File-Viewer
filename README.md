@@ -8,24 +8,48 @@ A Python desktop GUI application built for the **Elekta Unity MR-Linac system** 
 
 ## Key Capabilities
 
-### 🎯 TRF Delivery & MLC Leaf Shape Analyzer
-* **Beam's Eye View (BEV) Visualizer**:
-  * Real-time 2D rendering of all **80 Agility MLC leaf pairs** (Bank Y1 & Bank Y2).
-  * Clear aperture boundary and X1/X2 Diaphragm/Jaw position overlays.
-  * Interactive timeline scrubber, step-by-step frame controls, and animation playback (1x, 2x, 5x, 10x speeds).
+### 🎯 Treatment Playback (Beam's Eye View)
+* **Elekta Unity Physical Collimator Calibration**:
+  * Real-time 2D rendering calibrated to exact **Elekta Unity MR-Linac** physical geometry:
+    * **Cross-plane leaf stack**: **57.4 cm (574.0 mm)** spanning $\pm 287.0\text{ mm}$ at isocenter ($SAD = 143.5\text{ cm}$).
+    * **Leaf pitch**: **7.175 mm** width per leaf at isocenter ($5.0\text{ mm} \times \frac{1435}{1000}$).
+    * **In-plane leaf travel**: **22.0 cm (220.0 mm)** spanning $\pm 110.0\text{ mm}$.
+    * **Carriage park boundaries**: $\pm 165.0\text{ mm}$ accommodating retracted/parked leaves.
+    * **Diaphragm shielding**: X1 (Red) and X2 (Green) cross-plane diaphragms accurately shielding outer leaves.
+  * Fully calibrated Bank Y1 coordinate sign mapping (negative isocenter aperture coordinates).
+* **Configurable Bank Y2 Orientation**:
+  * Combobox selector to display Bank Y2 at **`Top`** (default), **`Bottom`**, **`Right`**, or **`Left`** with isotropic canvas scaling.
+* **Treatment Timestamps & Real-Time Delivery Scrubbing**:
+  * Displayed directly on the deep blue canvas background (`#0f172a`) to the right of the MLC display:
+    * **Tx Start**: Delivery start date and time (`YYYY-MM-DD HH:MM:SS`) parsed from the TRF header.
+    * **Current CP**: Active control point timestamp highlighted in sky blue (`#38bdf8`), advancing in real time during scrub or playback.
+    * **Tx End**: Calculated delivery completion date and time.
+* **Instantaneous Dose Rate & Vertical Bar Graph**:
+  * Real-time numeric readout (`Dose Rate: <val> MU/min`) with beam amber radiation highlighting.
+  * Calibrated vertical bar graph from **0 MU/min** at the bottom to **500 MU/min** at the top, featuring scale ticks (0, 100, 200, 300, 400, 500 MU/min), active proportional fill, and indicator needle.
+* **Real-Time Gating Indicator Box**:
+  * Dedicated interlock indicator box located in the dose rate subwindow to the right of the bar graph.
+  * Automatically turns **bright red** (`#dc2626` / `#ef4444`) with bold white text and `ENABLED` badge when motion tracking or beam hold gating is active.
+  * Displays dark navy (`#0b1120`) with muted slate text and `DISABLED` badge when gating is inactive.
+  * Native detection of TRF gating channels (`Gating`, `beam hold`, and Unity EDLI channel `2546`).
+* **High-Visibility Scaled Typography**:
+  * All canvas readouts, axis labels, and beam metric texts are scaled 1.5x larger for optimal viewing on clinical monitors.
+* **Playback & Inspection Controls**:
+  * Interactive timeline scrubber, frame step controls, and variable-speed animation (1x, 2x, 5x, 10x).
   * Color-coded error tagging directly on individual leaves (green: nominal, amber: > 1.0 mm, red: > 2.0 mm).
   * Live hover tooltip displaying exact leaf positions, positional errors, and aperture gap.
-* **Gantry Position & Dynamics**:
-  * Dual-subplot visualization: Gantry Angle (Actual vs Planned) and instantaneous Gantry Positional Error.
-  * Shaded tolerance bands (nominal $\pm 0.5^\circ$, warning $\pm 1.0^\circ$).
-  * Interactive click-to-scrub on the trajectory curve to jump to any point in the treatment delivery.
-* **Comprehensive Quality Assurance & Error Metrics**:
-  * **2D Leaf Error Heatmap**: Error magnitude (|Error| mm) mapped across all 80 leaves vs delivery time.
-  * **RMS Error Bar Chart**: Root-Mean-Square error per leaf for Bank Y1 and Bank Y2 with tolerance threshold lines.
-  * **Worst Performing Leaves Table**: Rank-ordered list identifying leaves with highest peak error or RMS deviation.
-  * **Export to CSV**: Export leaf error statistics and tolerance summaries for clinical records.
-* **Raw Delivery Channels Browser**:
-  * Searchable table viewer across all recorded delivery channels at 25 Hz.
+
+### 📈 Gantry Position & Dynamics
+* **Dual-Subplot Visualization**: Gantry Angle (Actual vs Planned) and instantaneous Gantry Positional Error.
+* **Tolerance Envelopes**: Shaded tolerance bands (nominal $\pm 0.5^\circ$, warning $\pm 1.0^\circ$).
+* **Interactive Scrubbing**: Click directly on the trajectory curve to jump to any point in the treatment delivery.
+
+### 🔬 Comprehensive Quality Assurance & Error Metrics
+* **2D Leaf Error Heatmap**: Error magnitude (|Error| mm) mapped across all 80 leaves vs delivery time.
+* **RMS Error Bar Chart**: Root-Mean-Square error per leaf for Bank Y1 and Bank Y2 with tolerance threshold lines.
+* **Worst Performing Leaves Table**: Rank-ordered list identifying leaves with highest peak error or RMS deviation.
+* **Export to CSV**: Export leaf error statistics and tolerance summaries for clinical records.
+* **Raw Delivery Channels Browser**: Searchable table viewer across all recorded delivery channels at 25 Hz.
 
 ### 📋 Machine Event & Text Log Viewer
 * **Smart Parsing**: Auto-extracts timestamps, log severity levels (`CRITICAL`, `ERROR`, `WARN`, `INFO`, `DEBUG`), and subsystems/components (`LinacState`, `MRAcquisition`, `MLCService`, `BeamControl`, `SafetyInterlock`, etc.).
@@ -81,4 +105,11 @@ Run all unit and GUI integration tests:
 ```bash
 python -m unittest discover -s tests
 ```
+
+---
+
+## Changelog
+
+For a detailed history of all changes, enhancements, and calibrations, see [CHANGELOG.md](CHANGELOG.md).
+
 

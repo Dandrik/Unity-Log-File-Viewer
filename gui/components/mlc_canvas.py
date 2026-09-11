@@ -346,7 +346,6 @@ class MLCCanvas(ttk.Frame):
 
         # Always draw treatment timestamps and dose rate bar on the blue background to the right of the MLC display
         self._draw_datetimes()
-        self._draw_doserate(self.current_dose_rate)
         self._draw_doserate(self.current_dose_rate, self.current_gating)
 
     def _on_y2_orientation_changed(self, event=None) -> None:
@@ -534,7 +533,6 @@ class MLCCanvas(ttk.Frame):
 
         # Always draw treatment timestamps and dose rate bar on the blue background to the right of the MLC display
         self._draw_datetimes()
-        self._draw_doserate(self.current_dose_rate)
         self._draw_doserate(self.current_dose_rate, self.current_gating)
 
     def _draw_datetimes(self) -> None:
@@ -634,8 +632,6 @@ class MLCCanvas(ttk.Frame):
             tags="datetime"
         )
 
-    def _draw_doserate(self, dose_rate: float) -> None:
-        """Draws current dose rate readout and a vertical bar graph (0 - 500 MU/min) below timestamps."""
     def _draw_doserate(self, dose_rate: float, is_gating: Optional[bool] = None) -> None:
         """Draws current dose rate readout, vertical bar graph (0 - 500 MU/min), and Gating indicator box."""
         self.canvas.delete("doserate")
@@ -658,7 +654,6 @@ class MLCCanvas(ttk.Frame):
             x_label = max(10.0, w - 270.0)
 
         box_pad = 12.0
-        box_w = 262.0
         box_w = 270.0
         box_x1 = x_label - box_pad
         box_x2 = box_x1 + box_w
@@ -675,7 +670,6 @@ class MLCCanvas(ttk.Frame):
             tags="doserate"
         )
 
-        # Update compatibility label
         # Update compatibility labels
         rate_str = f"{dose_rate:.1f} MU/min"
         self.lbl_dose_rate.config(text=rate_str)
@@ -701,8 +695,6 @@ class MLCCanvas(ttk.Frame):
         )
 
         # Vertical bar graph: 0 MU/min (bottom) to 500 MU/min (top)
-        bar_x1 = box_x1 + 32.0
-        bar_w = 26.0
         bar_x1 = box_x1 + 24.0
         bar_w = 22.0
         bar_x2 = bar_x1 + bar_w
@@ -758,7 +750,6 @@ class MLCCanvas(ttk.Frame):
         ]
 
         for val, ty, lbl, is_major in ticks:
-            tick_len = 8 if is_major else 5
             tick_len = 7 if is_major else 4
             tick_color = "#94a3b8" if is_major else "#475569"
             lbl_color = "#cbd5e1" if is_major else "#64748b"
@@ -771,7 +762,6 @@ class MLCCanvas(ttk.Frame):
                 tags="doserate"
             )
             self.canvas.create_text(
-                bar_x2 + 14.0, ty,
                 bar_x2 + 10.0, ty,
                 text=lbl,
                 fill=lbl_color,
